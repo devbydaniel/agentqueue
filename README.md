@@ -72,6 +72,7 @@ Edit `.env`:
 | `LOCK_TTL` | `900` | Per-target Redis lock TTL in seconds |
 | `GITHUB_WEBHOOK_SECRET` | — | HMAC secret for GitHub webhook verification |
 | `TRIGGERS_CONFIG_PATH` | `./config/triggers.yaml` | Path to trigger definitions |
+| `AQ_URL` | `http://localhost:3000` | AgentQueue server URL (used by `aq` CLI) |
 
 ### 3. Configure triggers
 
@@ -151,6 +152,84 @@ Point your GitHub webhook to `https://your-host/webhooks/github` with the same s
 ### Bull Board dashboard
 
 Open `http://localhost:3000/admin/queues` to monitor queues, view job status, retry failed jobs, etc.
+
+## Live Events
+
+The processor runs agents in JSON mode (`--mode json`) and parses stdout into normalized events, which are written to Redis streams. Events are retained for 24 hours after job completion.
+
+### Event types
+
+| Type | Description |
+|---|---|
+| `turn_start` | New agent turn began |
+| `tool_start` | Tool execution started (includes tool name + args) |
+| `tool_end` | Tool execution finished (includes success/error) |
+| `text_delta` | Incremental text output from the agent |
+| `agent_end` | Agent finished |
+| `log` | Raw non-JSON stdout line |
+| `error` | Error event |
+
+### REST API
+
+```bash
+# Get all events for a job (JSON array)
+curl http://localhost:3000/jobs/1/events
+
+# Stream events via SSE
+curl -H 'Accept: text/event-stream' http://localhost:3000/jobs/1/events
+# or
+curl http://localhost:3000/jobs/1/events?stream=true
+```
+
+## `aq` CLI
+
+A command-line interface for interacting with AgentQueue. Set `AQ_URL` to point to your server (default: `http://localhost:3000`).
+
+```bash
+export AQ_URL=http://localhost:3000
+```
+
+### Commands
+
+```bash
+# List jobs (default: 20 most recent)
+aq jobs
+aq jobs --active
+aq jobs --failed -n 5
+
+# Check job status
+aq status <job-id>
+
+# Watch a job in real time (SSE stream)
+aq watch <job-id>
+
+# View logs for a completed job
+aq logs <job-id>
+
+# Submit a new job
+aq run <target> "<prompt>"
+aq run my-project "Fix the tests" --watch          # submit and watch
+aq run my-project "Refactor auth" --agent claude    # specify agent
+aq run my-project "Urgent fix" --priority 1         # set priority
+
+# Cancel a job
+aq kill <job-id>
+```
+
+### Installation
+
+After building, link the CLI globally:
+
+```bash
+npm run build
+npm link    # makes `aq` available globally
+```
+
+Or run directly:
+
+```bash
+node dist/cli/aq.js <command>
+```
 
 ## Scripts
 
