@@ -26,11 +26,11 @@ export interface JobResponse {
 }
 
 export function getJob(id: string): Promise<JobResponse> {
-  return request<JobResponse>(`/jobs/${id}`);
+  return request<JobResponse>(`/jobs/${encodeURIComponent(id)}`);
 }
 
 export function deleteJob(id: string): Promise<void> {
-  return request<void>(`/jobs/${id}`, { method: 'DELETE' });
+  return request<void>(`/jobs/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
 export function listJobs(options?: {
@@ -58,9 +58,9 @@ export function enqueueJob(data: {
 }
 
 export function getEvents(id: string): Promise<AgentEvent[]> {
-  return request<AgentEvent[]>(`/jobs/${id}/events`);
+  return request<AgentEvent[]>(`/jobs/${encodeURIComponent(id)}/events`);
 }
 
 export function streamEventsUrl(id: string): string {
-  return `${BASE_URL}/jobs/${id}/events/stream`;
+  return `${BASE_URL}/jobs/${encodeURIComponent(id)}/events/stream`;
 }

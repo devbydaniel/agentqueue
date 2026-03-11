@@ -55,9 +55,7 @@ export const jobsCommand = new Command('jobs')
         const row = [
           truncate(job.id, idWidth).padEnd(idWidth),
           truncate(job.target, targetWidth).padEnd(targetWidth),
-          colorStatus(job.status).padEnd(
-            statusWidth + (colorStatus(job.status).length - job.status.length),
-          ),
+          colorStatus(job.status.padEnd(statusWidth)),
           truncate(job.prompt.replace(/\n/g, ' '), promptWidth).padEnd(
             promptWidth,
           ),

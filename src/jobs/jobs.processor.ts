@@ -53,7 +53,7 @@ export class JobsProcessor extends WorkerHost {
       throw new DelayedError('Target is locked by another job');
     }
 
-    let pendingAppends: Promise<void>[] = [];
+    const pendingAppends: Promise<void>[] = [];
     try {
       const args = ['exec', target];
       if (agent) {
@@ -64,14 +64,32 @@ export class JobsProcessor extends WorkerHost {
       this.logger.log(`Spawning: agentfiles ${args.join(' ')}`);
 
       const timeout = this.configService.jobTimeout;
-      const result = await this.spawnProcess(
+      const output = await this.spawnProcess(
         'agentfiles',
         args,
         job.id!,
         timeout,
+        pendingAppends,
       );
-      pendingAppends = result.pendingAppends;
-      return { success: true, output: result.output };
+      return { success: true, output };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      const MAX_ERROR_TEXT = 500;
+      const truncatedMessage =
+        message.length > MAX_ERROR_TEXT
+          ? message.slice(0, MAX_ERROR_TEXT) + '…'
+          : message;
+      const errorEvent = {
+        type: 'error' as const,
+        timestamp: Date.now(),
+        text: truncatedMessage,
+      };
+      pendingAppends.push(
+        this.eventStore.append(job.id!, errorEvent).catch((e: unknown) => {
+          this.logger.warn(`Failed to append error event: ${String(e)}`);
+        }),
+      );
+      throw err;
     } finally {
       // Atomically release lock only if we still own it
       await redis.eval(RELEASE_LOCK_SCRIPT, 1, lockKey, job.id!);
@@ -86,14 +104,14 @@ export class JobsProcessor extends WorkerHost {
     command: string,
     args: string[],
     jobId: string,
-    timeout?: number,
-  ): Promise<{ output: string; pendingAppends: Promise<void>[] }> {
+    timeout: number | undefined,
+    pendingAppends: Promise<void>[],
+  ): Promise<string> {
     return new Promise((resolve, reject) => {
       const child = spawn(command, args);
       let output = '';
       let killed = false;
       let stdoutBuffer = '';
-      const pendingAppends: Promise<void>[] = [];
 
       const appendOutput = (text: string): void => {
         output += text;
@@ -176,7 +194,7 @@ export class JobsProcessor extends WorkerHost {
         if (killed) {
           reject(new Error(`Process timed out after ${timeout}ms: ${output}`));
         } else if (code === 0) {
-          resolve({ output, pendingAppends });
+          resolve(output);
         } else {
           reject(new Error(`Process exited with code ${code}: ${output}`));
         }
