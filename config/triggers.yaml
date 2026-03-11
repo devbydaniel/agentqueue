@@ -1,0 +1,15 @@
+triggers:
+  - name: daily-review
+    type: cron
+    schedule: "0 8 * * *"
+    target: assistant
+    prompt: "Run the morning kickoff routine"
+
+  # - name: pr-review
+  #   type: webhook
+  #   source: github
+  #   events:
+  #     - pull_request.opened
+  #     - pull_request.synchronize
+  #   target: "{{repository.name}}"
+  #   prompt: "Review PR #{{pull_request.number}}: {{pull_request.title}}"
