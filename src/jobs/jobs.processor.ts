@@ -53,6 +53,7 @@ export class JobsProcessor extends WorkerHost {
       throw new DelayedError('Target is locked by another job');
     }
 
+    let pendingAppends: Promise<void>[] = [];
     try {
       const args = ['exec', target];
       if (agent) {
@@ -63,16 +64,19 @@ export class JobsProcessor extends WorkerHost {
       this.logger.log(`Spawning: agentfiles ${args.join(' ')}`);
 
       const timeout = this.configService.jobTimeout;
-      const output = await this.spawnProcess(
+      const result = await this.spawnProcess(
         'agentfiles',
         args,
         job.id!,
         timeout,
       );
-      return { success: true, output };
+      pendingAppends = result.pendingAppends;
+      return { success: true, output: result.output };
     } finally {
       // Atomically release lock only if we still own it
       await redis.eval(RELEASE_LOCK_SCRIPT, 1, lockKey, job.id!);
+      // Wait for all in-flight appends before setting TTL
+      await Promise.allSettled(pendingAppends);
       // Set TTL on the event stream
       await this.eventStore.expire(job.id!, EVENT_TTL_SECONDS);
     }
@@ -83,18 +87,27 @@ export class JobsProcessor extends WorkerHost {
     args: string[],
     jobId: string,
     timeout?: number,
-  ): Promise<string> {
+  ): Promise<{ output: string; pendingAppends: Promise<void>[] }> {
     return new Promise((resolve, reject) => {
       const child = spawn(command, args);
       let output = '';
       let killed = false;
       let stdoutBuffer = '';
+      const pendingAppends: Promise<void>[] = [];
 
       const appendOutput = (text: string): void => {
         output += text;
         if (output.length > MAX_OUTPUT_SIZE) {
           output = output.slice(-MAX_OUTPUT_SIZE);
         }
+      };
+
+      const trackAppend = (promise: Promise<void>): void => {
+        pendingAppends.push(
+          promise.catch((err: unknown) => {
+            this.logger.warn(`Failed to append event: ${String(err)}`);
+          }),
+        );
       };
 
       const processLine = (line: string): void => {
@@ -110,17 +123,13 @@ export class JobsProcessor extends WorkerHost {
             timestamp: Date.now(),
             text: line,
           };
-          this.eventStore.append(jobId, logEvent).catch((err: unknown) => {
-            this.logger.warn(`Failed to append log event: ${String(err)}`);
-          });
+          trackAppend(this.eventStore.append(jobId, logEvent));
           return;
         }
 
         const event = normalizeEvent(parsed);
         if (event) {
-          this.eventStore.append(jobId, event).catch((err: unknown) => {
-            this.logger.warn(`Failed to append event: ${String(err)}`);
-          });
+          trackAppend(this.eventStore.append(jobId, event));
         }
       };
 
@@ -167,7 +176,7 @@ export class JobsProcessor extends WorkerHost {
         if (killed) {
           reject(new Error(`Process timed out after ${timeout}ms: ${output}`));
         } else if (code === 0) {
-          resolve(output);
+          resolve({ output, pendingAppends });
         } else {
           reject(new Error(`Process exited with code ${code}: ${output}`));
         }

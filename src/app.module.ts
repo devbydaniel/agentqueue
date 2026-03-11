@@ -1,13 +1,15 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ConfigModule } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
 import { BullBoardModule } from '@bull-board/nestjs';
 import { ExpressAdapter } from '@bull-board/express';
 import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
+import type { RedisOptions } from 'ioredis';
 import { EngineConfigModule } from './config/config.module.js';
 import { JobsModule } from './jobs/jobs.module.js';
 import { TriggersModule } from './triggers/triggers.module.js';
 import { EventsModule } from './events/events.module.js';
+import { RedisModule, REDIS_OPTIONS } from './redis/redis.module.js';
 
 @Module({
   imports: [
@@ -15,15 +17,12 @@ import { EventsModule } from './events/events.module.js';
       isGlobal: true,
       envFilePath: '.env',
     }),
+    RedisModule,
     BullModule.forRootAsync({
-      imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => ({
-        connection: {
-          host: configService.get<string>('REDIS_HOST', 'localhost'),
-          port: configService.get<number>('REDIS_PORT', 6379),
-        },
+      useFactory: (redisOptions: RedisOptions) => ({
+        connection: redisOptions,
       }),
-      inject: [ConfigService],
+      inject: [REDIS_OPTIONS],
     }),
     BullBoardModule.forRoot({
       route: '/admin/queues',

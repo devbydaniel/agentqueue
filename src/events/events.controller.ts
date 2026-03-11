@@ -1,11 +1,26 @@
-import { Controller, Get, Param, Req, Sse, MessageEvent } from '@nestjs/common';
+import {
+  BadRequestException,
+  Controller,
+  Get,
+  Param,
+  Req,
+  Sse,
+  MessageEvent,
+} from '@nestjs/common';
 import { Observable } from 'rxjs';
 import type { Request } from 'express';
 import { EventStoreService } from './event-store.service.js';
 import type { AgentEvent } from './agent-event.interface.js';
+import { JOB_ID_PATTERN } from './validation.js';
 
 function isTerminalEvent(event: AgentEvent): boolean {
   return event.type === 'agent_end' || event.type === 'error';
+}
+
+function validateJobIdParam(id: string): void {
+  if (!JOB_ID_PATTERN.test(id)) {
+    throw new BadRequestException(`Invalid jobId: ${id}`);
+  }
 }
 
 @Controller('jobs/:id/events')
@@ -14,6 +29,7 @@ export class EventsController {
 
   @Get()
   async getEvents(@Param('id') id: string): Promise<AgentEvent[]> {
+    validateJobIdParam(id);
     const { events } = await this.eventStore.getAll(id);
     return events;
   }
@@ -23,6 +39,7 @@ export class EventsController {
     @Param('id') id: string,
     @Req() req: Request,
   ): Observable<MessageEvent> {
+    validateJobIdParam(id);
     const abortController = new AbortController();
 
     req.on('close', () => {

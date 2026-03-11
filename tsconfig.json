@@ -19,5 +19,6 @@
     "strict": true,
     "forceConsistentCasingInFileNames": true,
     "noFallthroughCasesInSwitch": false
-  }
+  },
+  "include": ["src/**/*", "cli/**/*", "test/**/*"]
 }

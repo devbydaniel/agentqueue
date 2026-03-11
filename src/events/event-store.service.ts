@@ -1,6 +1,8 @@
-import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import type Redis from 'ioredis';
+import { REDIS_CLIENT } from '../redis/redis.module.js';
 import type { AgentEvent } from './agent-event.interface.js';
+import { validateJobId } from './validation.js';
 
 export interface GetAllResult {
   events: AgentEvent[];
@@ -9,16 +11,14 @@ export interface GetAllResult {
 
 const STREAM_KEY_PREFIX = 'aq:events:';
 const MAX_STREAM_LENGTH = 500;
-const JOB_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
 @Injectable()
 export class EventStoreService {
-  constructor(@Inject('REDIS_CLIENT') private readonly redis: Redis) {}
+  constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) {}
 
-  private validateJobId(jobId: string): void {
-    if (!JOB_ID_PATTERN.test(jobId)) {
-      throw new BadRequestException(`Invalid jobId: ${jobId}`);
-    }
+  private key(jobId: string): string {
+    validateJobId(jobId);
+    return `${STREAM_KEY_PREFIX}${jobId}`;
   }
 
   private parseEntry(fields: string[]): AgentEvent | null {
@@ -32,10 +32,9 @@ export class EventStoreService {
   }
 
   async append(jobId: string, event: AgentEvent): Promise<void> {
-    this.validateJobId(jobId);
-    const key = `${STREAM_KEY_PREFIX}${jobId}`;
+    const k = this.key(jobId);
     await this.redis.xadd(
-      key,
+      k,
       'MAXLEN',
       '~',
       String(MAX_STREAM_LENGTH),
@@ -46,9 +45,8 @@ export class EventStoreService {
   }
 
   async getAll(jobId: string): Promise<GetAllResult> {
-    this.validateJobId(jobId);
-    const key = `${STREAM_KEY_PREFIX}${jobId}`;
-    const entries = await this.redis.xrange(key, '-', '+');
+    const k = this.key(jobId);
+    const entries = await this.redis.xrange(k, '-', '+');
     const events: AgentEvent[] = [];
     let lastId: string | null = null;
     for (const [id, fields] of entries) {
@@ -64,8 +62,7 @@ export class EventStoreService {
     lastId = '$',
     signal?: AbortSignal,
   ): AsyncGenerator<AgentEvent> {
-    this.validateJobId(jobId);
-    const key = `${STREAM_KEY_PREFIX}${jobId}`;
+    const k = this.key(jobId);
     let currentId = lastId;
     const blockingClient = this.redis.duplicate();
 
@@ -75,7 +72,7 @@ export class EventStoreService {
           'BLOCK',
           1000,
           'STREAMS',
-          key,
+          k,
           currentId,
         );
 
@@ -95,8 +92,7 @@ export class EventStoreService {
   }
 
   async expire(jobId: string, ttlSeconds: number): Promise<void> {
-    this.validateJobId(jobId);
-    const key = `${STREAM_KEY_PREFIX}${jobId}`;
-    await this.redis.expire(key, ttlSeconds);
+    const k = this.key(jobId);
+    await this.redis.expire(k, ttlSeconds);
   }
 }

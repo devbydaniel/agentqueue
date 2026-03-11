@@ -12,7 +12,7 @@ function truncateArgs(args: unknown): Record<string, unknown> | undefined {
   if (!args || typeof args !== 'object') return undefined;
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(args as Record<string, unknown>)) {
-    result[key] = truncate(value) ?? value;
+    result[key] = truncate(value);
   }
   return result;
 }

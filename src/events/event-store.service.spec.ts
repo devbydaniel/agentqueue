@@ -1,4 +1,3 @@
-import { BadRequestException } from '@nestjs/common';
 import { EventStoreService } from './event-store.service.js';
 import type Redis from 'ioredis';
 import type { AgentEvent } from './agent-event.interface.js';
@@ -32,14 +31,10 @@ describe('EventStoreService', () => {
   describe('jobId validation', () => {
     it('should reject jobIds with special characters', async () => {
       await expect(service.append('../etc', sampleEvent)).rejects.toThrow(
-        BadRequestException,
+        Error,
       );
-      await expect(service.getAll('foo bar')).rejects.toThrow(
-        BadRequestException,
-      );
-      await expect(service.expire('a/b', 100)).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(service.getAll('foo bar')).rejects.toThrow(Error);
+      await expect(service.expire('a/b', 100)).rejects.toThrow(Error);
     });
 
     it('should accept valid jobIds', async () => {

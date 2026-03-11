@@ -53,7 +53,7 @@ export class JobsService {
       limit?: number;
     } = {},
   ): Promise<JobResponseDto[]> {
-    const limit = options.limit ?? 20;
+    const limit = Math.min(options.limit ?? 20, 100);
     const stateMap: Record<string, JobType[]> = {
       all: ['active', 'completed', 'failed', 'waiting', 'delayed'],
       active: ['active'],
