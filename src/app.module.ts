@@ -7,6 +7,7 @@ import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
 import { EngineConfigModule } from './config/config.module.js';
 import { JobsModule } from './jobs/jobs.module.js';
 import { TriggersModule } from './triggers/triggers.module.js';
+import { EventsModule } from './events/events.module.js';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { TriggersModule } from './triggers/triggers.module.js';
     EngineConfigModule,
     JobsModule,
     TriggersModule,
+    EventsModule,
   ],
 })
 export class AppModule {}

@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import { EventStoreService } from './event-store.service.js';
 import type Redis from 'ioredis';
 import type { AgentEvent } from './agent-event.interface.js';
@@ -31,10 +32,14 @@ describe('EventStoreService', () => {
   describe('jobId validation', () => {
     it('should reject jobIds with special characters', async () => {
       await expect(service.append('../etc', sampleEvent)).rejects.toThrow(
-        'Invalid jobId',
+        BadRequestException,
       );
-      await expect(service.getAll('foo bar')).rejects.toThrow('Invalid jobId');
-      await expect(service.expire('a/b', 100)).rejects.toThrow('Invalid jobId');
+      await expect(service.getAll('foo bar')).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(service.expire('a/b', 100)).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('should accept valid jobIds', async () => {
@@ -70,22 +75,24 @@ describe('EventStoreService', () => {
         ['2-0', ['data', serialized]],
       ]);
 
-      const events = await service.getAll('job-123');
+      const result = await service.getAll('job-123');
 
       expect(mockRedis.xrange).toHaveBeenCalledWith(
         'aq:events:job-123',
         '-',
         '+',
       );
-      expect(events).toHaveLength(2);
-      expect(events[0]).toEqual(sampleEvent);
+      expect(result.events).toHaveLength(2);
+      expect(result.events[0]).toEqual(sampleEvent);
+      expect(result.lastId).toBe('2-0');
     });
 
-    it('should return empty array when no events', async () => {
+    it('should return empty array and null lastId when no events', async () => {
       (mockRedis.xrange as jest.Mock).mockResolvedValue([]);
 
-      const events = await service.getAll('job-123');
-      expect(events).toEqual([]);
+      const result = await service.getAll('job-123');
+      expect(result.events).toEqual([]);
+      expect(result.lastId).toBeNull();
     });
 
     it('should skip entries with missing data field', async () => {
@@ -95,9 +102,10 @@ describe('EventStoreService', () => {
         ['2-0', ['data', serialized]],
       ]);
 
-      const events = await service.getAll('job-123');
-      expect(events).toHaveLength(1);
-      expect(events[0]).toEqual(sampleEvent);
+      const result = await service.getAll('job-123');
+      expect(result.events).toHaveLength(1);
+      expect(result.events[0]).toEqual(sampleEvent);
+      expect(result.lastId).toBe('2-0');
     });
 
     it('should skip entries with malformed JSON', async () => {
@@ -106,16 +114,17 @@ describe('EventStoreService', () => {
         ['2-0', ['data', JSON.stringify(sampleEvent)]],
       ]);
 
-      const events = await service.getAll('job-123');
-      expect(events).toHaveLength(1);
-      expect(events[0]).toEqual(sampleEvent);
+      const result = await service.getAll('job-123');
+      expect(result.events).toHaveLength(1);
+      expect(result.events[0]).toEqual(sampleEvent);
     });
 
     it('should skip entries where data is the last field (no value)', async () => {
       (mockRedis.xrange as jest.Mock).mockResolvedValue([['1-0', ['data']]]);
 
-      const events = await service.getAll('job-123');
-      expect(events).toHaveLength(0);
+      const result = await service.getAll('job-123');
+      expect(result.events).toHaveLength(0);
+      expect(result.lastId).toBe('1-0');
     });
   });
 

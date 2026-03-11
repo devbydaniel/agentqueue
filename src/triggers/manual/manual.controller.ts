@@ -5,6 +5,7 @@ import {
   Delete,
   Param,
   Body,
+  Query,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
@@ -32,6 +33,18 @@ export class ManualController {
 
     const id = await this.jobsService.enqueue(data);
     return { id };
+  }
+
+  @Get()
+  async list(
+    @Query('status') status?: string,
+    @Query('limit') limit?: string,
+  ): Promise<JobResponseDto[]> {
+    const parsed = limit ? parseInt(limit, 10) : undefined;
+    return this.jobsService.list({
+      status,
+      limit: parsed && parsed > 0 ? parsed : undefined,
+    });
   }
 
   @Get(':id')

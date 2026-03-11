@@ -14,6 +14,7 @@ describe('ManualController', () => {
       enqueue: jest.fn(),
       getStatus: jest.fn(),
       cancel: jest.fn(),
+      list: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -88,6 +89,73 @@ describe('ManualController', () => {
           priority: 1,
         }),
       );
+    });
+  });
+
+  describe('GET /jobs', () => {
+    it('should return jobs with default options', async () => {
+      const jobs = [
+        Object.assign(new JobResponseDto(), {
+          id: 'job-1',
+          status: 'active',
+          target: 'repo1',
+          prompt: 'Do stuff',
+          createdAt: new Date(),
+        }),
+      ];
+      jobsService.list.mockResolvedValue(jobs);
+
+      const result = await controller.list();
+
+      expect(result).toBe(jobs);
+      expect(jobsService.list).toHaveBeenCalledWith({
+        status: undefined,
+        limit: undefined,
+      });
+    });
+
+    it('should pass status filter', async () => {
+      jobsService.list.mockResolvedValue([]);
+
+      await controller.list('active');
+
+      expect(jobsService.list).toHaveBeenCalledWith({
+        status: 'active',
+        limit: undefined,
+      });
+    });
+
+    it('should pass limit as number', async () => {
+      jobsService.list.mockResolvedValue([]);
+
+      await controller.list(undefined, '5');
+
+      expect(jobsService.list).toHaveBeenCalledWith({
+        status: undefined,
+        limit: 5,
+      });
+    });
+
+    it('should fallback to undefined for non-numeric limit', async () => {
+      jobsService.list.mockResolvedValue([]);
+
+      await controller.list(undefined, 'abc');
+
+      expect(jobsService.list).toHaveBeenCalledWith({
+        status: undefined,
+        limit: undefined,
+      });
+    });
+
+    it('should fallback to undefined for negative limit', async () => {
+      jobsService.list.mockResolvedValue([]);
+
+      await controller.list(undefined, '-5');
+
+      expect(jobsService.list).toHaveBeenCalledWith({
+        status: undefined,
+        limit: undefined,
+      });
     });
   });
 

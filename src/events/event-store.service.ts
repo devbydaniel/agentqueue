@@ -1,6 +1,11 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import type Redis from 'ioredis';
 import type { AgentEvent } from './agent-event.interface.js';
+
+export interface GetAllResult {
+  events: AgentEvent[];
+  lastId: string | null;
+}
 
 const STREAM_KEY_PREFIX = 'aq:events:';
 const MAX_STREAM_LENGTH = 500;
@@ -12,7 +17,7 @@ export class EventStoreService {
 
   private validateJobId(jobId: string): void {
     if (!JOB_ID_PATTERN.test(jobId)) {
-      throw new Error(`Invalid jobId: ${jobId}`);
+      throw new BadRequestException(`Invalid jobId: ${jobId}`);
     }
   }
 
@@ -40,16 +45,18 @@ export class EventStoreService {
     );
   }
 
-  async getAll(jobId: string): Promise<AgentEvent[]> {
+  async getAll(jobId: string): Promise<GetAllResult> {
     this.validateJobId(jobId);
     const key = `${STREAM_KEY_PREFIX}${jobId}`;
     const entries = await this.redis.xrange(key, '-', '+');
     const events: AgentEvent[] = [];
-    for (const [, fields] of entries) {
+    let lastId: string | null = null;
+    for (const [id, fields] of entries) {
+      lastId = id;
       const event = this.parseEntry(fields);
       if (event) events.push(event);
     }
-    return events;
+    return { events, lastId };
   }
 
   async *stream(

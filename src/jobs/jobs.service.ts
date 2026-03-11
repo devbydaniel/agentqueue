@@ -1,8 +1,28 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
+import { Queue, Job } from 'bullmq';
+import type { JobType } from 'bullmq';
 import { AgentJobData } from './job.interface.js';
 import { JobResponseDto } from './dto/job-response.dto.js';
+
+function toDto(
+  job: Job,
+  state: string,
+  opts?: { includeResult?: boolean },
+): JobResponseDto {
+  const data = job.data as AgentJobData;
+  const response = new JobResponseDto();
+  response.id = job.id!;
+  response.status = state;
+  response.target = data.target;
+  response.prompt = data.prompt;
+  response.createdAt = new Date(job.timestamp);
+  response.finishedAt = job.finishedOn ? new Date(job.finishedOn) : undefined;
+  if (opts?.includeResult) {
+    response.result = job.returnvalue as unknown;
+  }
+  return response;
+}
 
 @Injectable()
 export class JobsService {
@@ -24,15 +44,36 @@ export class JobsService {
     }
 
     const state = await job.getState();
-    const response = new JobResponseDto();
-    response.id = job.id!;
-    response.status = state;
-    response.target = (job.data as AgentJobData).target;
-    response.prompt = (job.data as AgentJobData).prompt;
-    response.createdAt = new Date(job.timestamp);
-    response.finishedAt = job.finishedOn ? new Date(job.finishedOn) : undefined;
-    response.result = job.returnvalue as unknown;
-    return response;
+    return toDto(job, state, { includeResult: true });
+  }
+
+  async list(
+    options: {
+      status?: string;
+      limit?: number;
+    } = {},
+  ): Promise<JobResponseDto[]> {
+    const limit = options.limit ?? 20;
+    const stateMap: Record<string, JobType[]> = {
+      all: ['active', 'completed', 'failed', 'waiting', 'delayed'],
+      active: ['active'],
+      completed: ['completed'],
+      failed: ['failed'],
+      waiting: ['waiting'],
+      delayed: ['delayed'],
+    };
+    const states = stateMap[options.status ?? 'all'] ?? stateMap['all'];
+
+    const jobs = await this.queue.getJobs(states, 0, limit - 1);
+
+    // Sort by creation time descending
+    jobs.sort((a, b) => b.timestamp - a.timestamp);
+
+    const limited = jobs.slice(0, limit);
+
+    return Promise.all(
+      limited.map(async (job) => toDto(job, await job.getState())),
+    );
   }
 
   async cancel(id: string): Promise<void> {

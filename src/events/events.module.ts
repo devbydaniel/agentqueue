@@ -3,8 +3,10 @@ import { ConfigService } from '@nestjs/config';
 import IORedis from 'ioredis';
 import type Redis from 'ioredis';
 import { EventStoreService } from './event-store.service.js';
+import { EventsController } from './events.controller.js';
 
 @Module({
+  controllers: [EventsController],
   providers: [
     {
       provide: 'REDIS_CLIENT',
