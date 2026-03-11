@@ -1,6 +1,7 @@
-import { Module } from '@nestjs/common';
+import { Module, OnModuleDestroy, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import IORedis from 'ioredis';
+import type Redis from 'ioredis';
 import { EventStoreService } from './event-store.service.js';
 
 @Module({
@@ -19,4 +20,10 @@ import { EventStoreService } from './event-store.service.js';
   ],
   exports: [EventStoreService],
 })
-export class EventsModule {}
+export class EventsModule implements OnModuleDestroy {
+  constructor(@Inject('REDIS_CLIENT') private readonly redis: Redis) {}
+
+  async onModuleDestroy(): Promise<void> {
+    await this.redis.quit();
+  }
+}

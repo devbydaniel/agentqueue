@@ -30,7 +30,7 @@ export function normalizeEvent(
       return {
         type: 'tool_start',
         timestamp,
-        tool: (rawJson['tool'] as string | undefined) ?? undefined,
+        tool: typeof rawJson['tool'] === 'string' ? rawJson['tool'] : undefined,
         toolArgs: truncateArgs(rawJson['args'] ?? rawJson['input']),
       };
 
@@ -38,8 +38,8 @@ export function normalizeEvent(
       return {
         type: 'tool_end',
         timestamp,
-        tool: (rawJson['tool'] as string | undefined) ?? undefined,
-        isError: (rawJson['is_error'] as boolean | undefined) ?? false,
+        tool: typeof rawJson['tool'] === 'string' ? rawJson['tool'] : undefined,
+        isError: rawJson['is_error'] === true,
         output: truncate(rawJson['output']),
       };
 
@@ -47,7 +47,10 @@ export function normalizeEvent(
       return {
         type: 'turn_start',
         timestamp,
-        turnIndex: (rawJson['turn_index'] as number | undefined) ?? undefined,
+        turnIndex:
+          typeof rawJson['turn_index'] === 'number'
+            ? rawJson['turn_index']
+            : undefined,
       };
 
     case 'turn_end':
@@ -60,7 +63,8 @@ export function normalizeEvent(
         return {
           type: 'text_delta',
           timestamp,
-          text: (rawJson['text'] as string | undefined) ?? undefined,
+          text:
+            typeof rawJson['text'] === 'string' ? rawJson['text'] : undefined,
         };
       }
       return null;

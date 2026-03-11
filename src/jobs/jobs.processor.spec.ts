@@ -2,6 +2,7 @@ import { ChildProcess } from 'child_process';
 import { JobsProcessor } from './jobs.processor.js';
 import { Job, Queue, DelayedError } from 'bullmq';
 import { EngineConfigService } from '../config/engine-config.service.js';
+import { EventStoreService } from '../events/event-store.service.js';
 import { AgentJobData } from './job.interface.js';
 import { EventEmitter } from 'events';
 import type Redis from 'ioredis';
@@ -41,6 +42,12 @@ describe('JobsProcessor', () => {
   let mockRedis: Partial<Redis>;
   let mockQueue: Partial<Queue>;
   let mockConfigService: Partial<EngineConfigService>;
+  let mockEventStore: {
+    append: jest.Mock;
+    getAll: jest.Mock;
+    stream: jest.Mock;
+    expire: jest.Mock;
+  };
 
   beforeEach(() => {
     mockRedis = {
@@ -59,9 +66,17 @@ describe('JobsProcessor', () => {
       jobTimeout: 600000,
     };
 
+    mockEventStore = {
+      append: jest.fn().mockResolvedValue(undefined),
+      getAll: jest.fn().mockResolvedValue([]),
+      stream: jest.fn(),
+      expire: jest.fn().mockResolvedValue(undefined),
+    };
+
     processor = new JobsProcessor(
       mockQueue as Queue,
       mockConfigService as EngineConfigService,
+      mockEventStore as unknown as EventStoreService,
     );
   });
 
@@ -73,7 +88,7 @@ describe('JobsProcessor', () => {
     return { id, data } as Job<AgentJobData>;
   }
 
-  it('should spawn agentfiles with correct args for a basic job', async () => {
+  it('should spawn agentfiles with correct args including --mode json', async () => {
     const child = createMockChildProcess(0, 'job output here');
     mockedSpawn.mockReturnValue(child);
 
@@ -88,6 +103,8 @@ describe('JobsProcessor', () => {
     expect(mockedSpawn).toHaveBeenCalledWith('agentfiles', [
       'exec',
       'myrepo',
+      '--mode',
+      'json',
       '--',
       '-p',
       'Fix the bug',
@@ -113,6 +130,8 @@ describe('JobsProcessor', () => {
       'myrepo',
       '--agent',
       'claude',
+      '--mode',
+      'json',
       '--',
       '-p',
       'Review PR',
@@ -197,6 +216,8 @@ describe('JobsProcessor', () => {
     await expect(processor.process(job)).rejects.toThrow(DelayedError);
     // Lock was never acquired, so eval should not be called
     expect(mockRedis.eval).not.toHaveBeenCalled();
+    // expire should not be called either
+    expect(mockEventStore.expire).not.toHaveBeenCalled();
   });
 
   it('should handle spawn error event (ENOENT)', async () => {
@@ -248,5 +269,156 @@ describe('JobsProcessor', () => {
     expect(result.output.length).toBe(100 * 1024);
     // Should keep the tail (last 100KB)
     expect(result.output).toBe(largeChunk.slice(-100 * 1024));
+  });
+
+  it('should write normalized events to event store for valid JSON lines', async () => {
+    const jsonLines =
+      [
+        JSON.stringify({ type: 'turn_start', turn_index: 0 }),
+        JSON.stringify({
+          type: 'tool_execution_start',
+          tool: 'bash',
+          args: { command: 'ls' },
+        }),
+        JSON.stringify({
+          type: 'tool_execution_end',
+          tool: 'bash',
+          is_error: false,
+          output: 'file.txt',
+        }),
+        JSON.stringify({ type: 'agent_end' }),
+      ].join('\n') + '\n';
+
+    const child = createMockChildProcess(0, jsonLines);
+    mockedSpawn.mockReturnValue(child);
+
+    const job = createJob({
+      target: 'myrepo',
+      prompt: 'test',
+      trigger: { type: 'api' },
+    });
+
+    await processor.process(job);
+
+    // Should have 4 append calls for the 4 normalized events
+    expect(mockEventStore.append).toHaveBeenCalledTimes(4);
+    expect(mockEventStore.append).toHaveBeenCalledWith(
+      'job-123',
+      expect.objectContaining({ type: 'turn_start', turnIndex: 0 }),
+    );
+    expect(mockEventStore.append).toHaveBeenCalledWith(
+      'job-123',
+      expect.objectContaining({ type: 'tool_start', tool: 'bash' }),
+    );
+    expect(mockEventStore.append).toHaveBeenCalledWith(
+      'job-123',
+      expect.objectContaining({
+        type: 'tool_end',
+        tool: 'bash',
+        isError: false,
+      }),
+    );
+    expect(mockEventStore.append).toHaveBeenCalledWith(
+      'job-123',
+      expect.objectContaining({ type: 'agent_end' }),
+    );
+  });
+
+  it('should write log events for non-JSON stdout lines', async () => {
+    const stdout = 'Starting agent...\nSome raw output\n';
+    const child = createMockChildProcess(0, stdout);
+    mockedSpawn.mockReturnValue(child);
+
+    const job = createJob({
+      target: 'myrepo',
+      prompt: 'test',
+      trigger: { type: 'api' },
+    });
+
+    await processor.process(job);
+
+    expect(mockEventStore.append).toHaveBeenCalledWith(
+      'job-123',
+      expect.objectContaining({ type: 'log', text: 'Starting agent...' }),
+    );
+    expect(mockEventStore.append).toHaveBeenCalledWith(
+      'job-123',
+      expect.objectContaining({ type: 'log', text: 'Some raw output' }),
+    );
+  });
+
+  it('should skip unknown JSON event types (normalizer returns null)', async () => {
+    const jsonLines =
+      [
+        JSON.stringify({ type: 'session', session_id: 'abc' }),
+        JSON.stringify({ type: 'toolcall_delta', delta: 'x' }),
+        JSON.stringify({ type: 'turn_start', turn_index: 0 }),
+      ].join('\n') + '\n';
+
+    const child = createMockChildProcess(0, jsonLines);
+    mockedSpawn.mockReturnValue(child);
+
+    const job = createJob({
+      target: 'myrepo',
+      prompt: 'test',
+      trigger: { type: 'api' },
+    });
+
+    await processor.process(job);
+
+    // Only turn_start should be appended (session and toolcall_delta are filtered by normalizer)
+    expect(mockEventStore.append).toHaveBeenCalledTimes(1);
+    expect(mockEventStore.append).toHaveBeenCalledWith(
+      'job-123',
+      expect.objectContaining({ type: 'turn_start' }),
+    );
+  });
+
+  it('should call expire with 86400 after job completes successfully', async () => {
+    const child = createMockChildProcess(0, 'done');
+    mockedSpawn.mockReturnValue(child);
+
+    const job = createJob({
+      target: 'myrepo',
+      prompt: 'test',
+      trigger: { type: 'api' },
+    });
+
+    await processor.process(job);
+
+    expect(mockEventStore.expire).toHaveBeenCalledWith('job-123', 86400);
+  });
+
+  it('should call expire with 86400 after job fails', async () => {
+    const child = createMockChildProcess(1, '', 'error');
+    mockedSpawn.mockReturnValue(child);
+
+    const job = createJob({
+      target: 'myrepo',
+      prompt: 'test',
+      trigger: { type: 'api' },
+    });
+
+    await expect(processor.process(job)).rejects.toThrow();
+
+    expect(mockEventStore.expire).toHaveBeenCalledWith('job-123', 86400);
+  });
+
+  it('should still return raw output string for backward compat with JSON stdout', async () => {
+    const line1 = JSON.stringify({ type: 'turn_start', turn_index: 0 });
+    const line2 = JSON.stringify({ type: 'agent_end' });
+    const stdout = line1 + '\n' + line2 + '\n';
+
+    const child = createMockChildProcess(0, stdout);
+    mockedSpawn.mockReturnValue(child);
+
+    const job = createJob({
+      target: 'myrepo',
+      prompt: 'test',
+      trigger: { type: 'api' },
+    });
+
+    const result = await processor.process(job);
+    expect(result.output).toBe(stdout);
   });
 });

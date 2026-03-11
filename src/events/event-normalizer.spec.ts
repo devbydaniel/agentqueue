@@ -117,4 +117,40 @@ describe('normalizeEvent', () => {
 
     expect(result!.output).toHaveLength(500);
   });
+
+  describe('runtime type safety', () => {
+    it('should return undefined for non-string tool', () => {
+      const result = normalizeEvent({
+        type: 'tool_execution_start',
+        tool: 42,
+      });
+      expect(result!.tool).toBeUndefined();
+    });
+
+    it('should return false for non-boolean is_error', () => {
+      const result = normalizeEvent({
+        type: 'tool_execution_end',
+        tool: 'bash',
+        is_error: 'yes',
+      });
+      expect(result!.isError).toBe(false);
+    });
+
+    it('should return undefined for non-number turn_index', () => {
+      const result = normalizeEvent({
+        type: 'turn_start',
+        turn_index: 'one',
+      });
+      expect(result!.turnIndex).toBeUndefined();
+    });
+
+    it('should return undefined for non-string text', () => {
+      const result = normalizeEvent({
+        type: 'message_update',
+        sub_type: 'text_delta',
+        text: 123,
+      });
+      expect(result!.text).toBeUndefined();
+    });
+  });
 });
