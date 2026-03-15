@@ -46,10 +46,8 @@ A job queue engine for AI coding agents. Accepts work via REST API, cron schedul
 
 ### 1. Start Redis
 
-Using the dev compose file:
-
 ```bash
-docker compose -f docker-compose.dev.yml up -d
+docker compose up -d
 ```
 
 Or use a local Redis instance.
@@ -239,16 +237,6 @@ node dist/cli/aq.js <command>
 | `npm test` | Run unit tests |
 | `npm run test:e2e` | Run e2e tests (requires Redis) |
 | `npm run lint` | Lint and auto-fix |
-
-## Docker
-
-See [Dockerfile](./Dockerfile) and [docker-compose.yml](./docker-compose.yml) for production deployment.
-
-```bash
-docker compose up -d
-```
-
-Note: `agentfiles` and agent CLIs (`pi`, `claude`) must be available in the runtime container. Mount them as volumes or install them separately — they are not bundled in the Docker image.
 
 ## License
 

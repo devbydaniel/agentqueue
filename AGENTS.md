@@ -94,6 +94,21 @@ end
 - Handlebars template rendering for `target` and `prompt` fields
 - Target sanitization via regex pattern
 
+## Running
+
+The engine runs natively on the host (not in a container) so that CLI tools like `agentfiles`, `pi`, `claude` etc. are available on `$PATH`. Redis runs in Docker.
+
+```bash
+# Start Redis
+docker compose up -d
+
+# Development (watch mode)
+npm run start:dev
+
+# Production
+npm run build && npm run start:prod
+```
+
 ## Running tests
 
 ```bash
@@ -102,9 +117,6 @@ npm test
 
 # E2e tests (requires Redis on localhost:6379)
 npm run test:e2e
-
-# Start dev Redis
-docker compose -f docker-compose.dev.yml up -d
 ```
 
 ## Build

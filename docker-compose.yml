@@ -1,27 +1,10 @@
 services:
   redis:
     image: redis:7-alpine
-    restart: unless-stopped
+    ports:
+      - '6379:6379'
     volumes:
       - redis-data:/data
-
-  engine:
-    build: .
-    depends_on:
-      - redis
-    env_file:
-      - .env
-    environment:
-      REDIS_HOST: redis
-    ports:
-      - '3000:3000'
-    volumes:
-      - ./config:/app/config:ro
-      # Mount agentfiles and agent CLIs as needed:
-      # - /usr/local/bin/agentfiles:/usr/local/bin/agentfiles:ro
-      # - /usr/local/bin/pi:/usr/local/bin/pi:ro
-      # Mount agent repos if needed:
-      # - ~/agentfiles:/root/agentfiles:ro
     restart: unless-stopped
 
 volumes:
