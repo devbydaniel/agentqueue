@@ -151,6 +151,12 @@ WantedBy=default.target
 
 **Note:** `ExecStart` requires an absolute path to the `node` binary (systemd requirement). Find it with `which node`. The agent CLIs spawned by the processor are found via PATH.
 
+Enable linger so user services survive logout and start at boot:
+
+```bash
+sudo loginctl enable-linger $USER
+```
+
 Enable and start:
 
 ```bash
