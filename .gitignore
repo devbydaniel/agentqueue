@@ -7,6 +7,9 @@ dist/
 # Environment
 .env
 
+# Deployment-specific trigger config (copy from config/triggers.yaml.example)
+config/triggers.yaml
+
 # IDE
 .idea/
 .vscode/

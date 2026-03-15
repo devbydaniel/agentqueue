@@ -74,7 +74,19 @@ Edit `.env`:
 
 ### 3. Configure triggers
 
-Edit `config/triggers.yaml`:
+Copy the example and customize for your deployment:
+
+```bash
+cp config/triggers.yaml.example config/triggers.yaml
+```
+
+Or point `TRIGGERS_CONFIG_PATH` in `.env` to any path outside the repo:
+
+```bash
+TRIGGERS_CONFIG_PATH=/etc/agentqueue/triggers.yaml
+```
+
+See `config/triggers.yaml.example` for the format:
 
 ```yaml
 triggers:

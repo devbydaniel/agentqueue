@@ -84,7 +84,7 @@ end
 ### Configuration
 
 - Environment variables via `@nestjs/config` (ConfigModule)
-- Trigger definitions via `config/triggers.yaml`, loaded by `EngineConfigService`
+- Trigger definitions via `TRIGGERS_CONFIG_PATH` (defaults to `./config/triggers.yaml`), loaded by `EngineConfigService`
 - All config is validated at startup
 
 ### Webhook handling
