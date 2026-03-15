@@ -1,6 +1,6 @@
 # AgentQueue
 
-A job queue engine for AI coding agents. Accepts work via REST API, cron schedules, or webhooks, queues it through BullMQ, and delegates execution to [`agentfiles exec`](https://github.com/badlogic/agentfiles) with per-target locking to prevent concurrent runs on the same repository.
+A job queue engine for AI coding agents. Accepts work via REST API, cron schedules, or webhooks, queues it through BullMQ, and delegates execution to [`af exec`](https://github.com/devbydaniel/agentfiles) with per-target locking to prevent concurrent runs on the same repository.
 
 ## Architecture
 
@@ -22,14 +22,14 @@ A job queue engine for AI coding agents. Accepts work via REST API, cron schedul
                    └──────┬──────┘
                           │
                    ┌──────▼──────┐
-                   │ agentfiles  │
-                   │    exec     │
+                   │   af exec   │
+                   │             │
                    └─────────────┘
 ```
 
 **Key components:**
 
-- **Jobs module** — BullMQ queue + processor. The processor acquires a Redis lock per target (via Lua script for atomicity), spawns `agentfiles exec <target> -- -p <prompt>`, and releases the lock when done. Retries with exponential backoff on lock contention.
+- **Jobs module** — BullMQ queue + processor. The processor acquires a Redis lock per target (via Lua script for atomicity), spawns `af exec <target> -- --mode json -p <prompt>`, and releases the lock when done. Retries with exponential backoff on lock contention.
 - **Manual trigger** — REST controller at `POST /jobs` for ad-hoc job submission.
 - **Cron trigger** — Reads `triggers.yaml`, registers BullMQ repeatable jobs on startup.
 - **Webhook trigger** — Receives webhooks at `POST /webhooks/:source`, verifies HMAC signatures (GitHub), renders Handlebars templates for target/prompt, enqueues matching jobs.
@@ -39,7 +39,7 @@ A job queue engine for AI coding agents. Accepts work via REST API, cron schedul
 
 - **Node.js** 20+
 - **Redis** 7+
-- **agentfiles** CLI installed and on PATH
+- **[agentfiles](https://github.com/devbydaniel/agentfiles)** (`af`) CLI installed and on PATH
 - Agent CLIs (`pi`, `claude`, etc.) installed as needed
 
 ## Setup
