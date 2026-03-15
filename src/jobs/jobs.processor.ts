@@ -59,13 +59,13 @@ export class JobsProcessor extends WorkerHost {
       if (agent) {
         args.push('--agent', agent);
       }
-      args.push('--mode', 'json', '--', '-p', prompt);
+      args.push('--', '--mode', 'json', '-p', prompt);
 
-      this.logger.log(`Spawning: agentfiles ${args.join(' ')}`);
+      this.logger.log(`Spawning: af ${args.join(' ')}`);
 
       const timeout = this.configService.jobTimeout;
       const output = await this.spawnProcess(
-        'agentfiles',
+        'af',
         args,
         job.id!,
         timeout,
@@ -108,7 +108,8 @@ export class JobsProcessor extends WorkerHost {
     pendingAppends: Promise<void>[],
   ): Promise<string> {
     return new Promise((resolve, reject) => {
-      const child = spawn(command, args);
+      const child = spawn(command, args, { stdio: ['pipe', 'pipe', 'pipe'] });
+      child.stdin.end();
       let output = '';
       let killed = false;
       let stdoutBuffer = '';

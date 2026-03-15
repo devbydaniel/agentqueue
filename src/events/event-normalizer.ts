@@ -30,18 +30,40 @@ export function normalizeEvent(
       return {
         type: 'tool_start',
         timestamp,
-        tool: typeof rawJson['tool'] === 'string' ? rawJson['tool'] : undefined,
+        tool:
+          typeof rawJson['toolName'] === 'string'
+            ? rawJson['toolName']
+            : typeof rawJson['tool'] === 'string'
+              ? rawJson['tool']
+              : undefined,
         toolArgs: truncateArgs(rawJson['args'] ?? rawJson['input']),
       };
 
-    case 'tool_execution_end':
+    case 'tool_execution_end': {
+      // Pi emits result as { content: [{ text }] }, flatten to string
+      let output: string | undefined;
+      const result = rawJson['result'] as Record<string, unknown> | undefined;
+      if (result && Array.isArray(result['content'])) {
+        const texts = (result['content'] as Array<Record<string, unknown>>)
+          .filter((c) => typeof c['text'] === 'string')
+          .map((c) => c['text'] as string);
+        output = truncate(texts.join('\n'));
+      } else {
+        output = truncate(rawJson['output']);
+      }
       return {
         type: 'tool_end',
         timestamp,
-        tool: typeof rawJson['tool'] === 'string' ? rawJson['tool'] : undefined,
-        isError: rawJson['is_error'] === true,
-        output: truncate(rawJson['output']),
+        tool:
+          typeof rawJson['toolName'] === 'string'
+            ? rawJson['toolName']
+            : typeof rawJson['tool'] === 'string'
+              ? rawJson['tool']
+              : undefined,
+        isError: rawJson['isError'] === true || rawJson['is_error'] === true,
+        output,
       };
+    }
 
     case 'turn_start':
       return {

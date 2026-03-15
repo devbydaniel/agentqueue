@@ -44,13 +44,22 @@ A job queue engine for AI coding agents. Accepts work via REST API, cron schedul
 
 ## Setup
 
-### 1. Start Redis
+### 1. Install Redis
+
+Redis must be running locally:
 
 ```bash
+# Debian/Ubuntu
+sudo apt install redis-server
+sudo systemctl enable --now redis-server
+
+# macOS
+brew install redis
+brew services start redis
+
+# Or via Docker
 docker compose up -d
 ```
-
-Or use a local Redis instance.
 
 ### 2. Configure environment
 
@@ -72,16 +81,18 @@ Edit `.env`:
 | `TRIGGERS_CONFIG_PATH` | `./config/triggers.yaml` | Path to trigger definitions |
 | `AQ_URL` | `http://localhost:3000` | AgentQueue server URL (used by `aq` CLI) |
 
+**Important:** Set `TRIGGERS_CONFIG_PATH` to an absolute path outside the repo for production use (e.g. `~/.config/agentqueue/triggers.yml`). The default `./config/triggers.yaml` is relative to the working directory and meant as an example.
+
 ### 3. Configure triggers
 
-Edit `config/triggers.yaml` (checked into the repo as a sensible default). For production, override `TRIGGERS_CONFIG_PATH` in `.env` to point elsewhere:
+Create a triggers file at the path specified by `TRIGGERS_CONFIG_PATH`:
 
 ```yaml
 triggers:
   # Cron: runs on a schedule
-  - name: daily-review
+  - name: morning-kickoff
     type: cron
-    schedule: "0 8 * * *"
+    schedule: "0 8 * * 1-5"
     target: assistant
     prompt: "Run the morning kickoff routine"
 
@@ -96,12 +107,64 @@ triggers:
     prompt: "Review PR #{{pull_request.number}}: {{pull_request.title}}"
 ```
 
-### 4. Install and run
+### 4. Build
 
 ```bash
 npm install
+npm run build
+```
+
+### 5. Run as a systemd user service (recommended)
+
+AgentQueue spawns agent CLIs (`af`, `pi`, `claude`, etc.) as child processes. These need to be on PATH. Since systemd user services don't inherit your shell PATH, you must configure it via `environment.d`:
+
+```bash
+# ~/.config/environment.d/path.conf
+# Set this to your shell's PATH (run `echo $PATH` to get it)
+PATH=/home/you/.local/bin:/home/linuxbrew/.linuxbrew/bin:/usr/local/bin:/usr/bin:/bin
+```
+
+Then import it into the running systemd user manager:
+
+```bash
+systemctl --user import-environment PATH
+```
+
+Create the service unit:
+
+```ini
+# ~/.config/systemd/user/agentqueue.service
+[Unit]
+Description=AgentQueue
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/path/to/agentqueue
+ExecStart=/absolute/path/to/node dist/src/main.js
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+```
+
+**Note:** `ExecStart` requires an absolute path to the `node` binary (systemd requirement). Find it with `which node`. The agent CLIs spawned by the processor are found via PATH.
+
+Enable and start:
+
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now agentqueue
+systemctl --user status agentqueue    # verify it's running
+journalctl --user -u agentqueue -f   # follow logs
+```
+
+### Alternative: run directly
+
+```bash
 npm run start:dev    # development (watch mode)
-npm run build && npm run start:prod  # production
+npm run start:prod   # production
 ```
 
 ## Usage
