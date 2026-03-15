@@ -5,11 +5,45 @@ triggers:
     target: assistant
     prompt: "Run the morning kickoff routine"
 
-  # - name: pr-review
+  # Triggered when someone requests a review from the AI agent on a PR
+  # - name: ai-agent-review-requested
   #   type: webhook
   #   source: github
   #   events:
-  #     - pull_request.opened
-  #     - pull_request.synchronize
+  #     - pull_request
+  #   filters:
+  #     - field: action
+  #       equals: review_requested
+  #     - field: requested_reviewer.login
+  #       equals: my-ai-agent-bot
   #   target: "{{repository.name}}"
-  #   prompt: "Review PR #{{pull_request.number}}: {{pull_request.title}}"
+  #   agent: reviewer
+  #   prompt: |
+  #     You were requested to review PR #{{pull_request.number}} in {{repository.full_name}}.
+  #     PR title: {{pull_request.title}}
+  #     PR branch: {{pull_request.head.ref}} → {{pull_request.base.ref}}
+  #     PR URL: {{pull_request.html_url}}
+  #
+  #     Check out the branch, review the changes, and post your review via the GitHub CLI.
+
+  # Triggered when a human submits review comments for the AI to address
+  # - name: ai-agent-address-review
+  #   type: webhook
+  #   source: github
+  #   events:
+  #     - pull_request_review
+  #   filters:
+  #     - field: action
+  #       equals: submitted
+  #     - field: review.state
+  #       in: ["changes_requested", "commented"]
+  #   target: "{{repository.name}}"
+  #   agent: reviewer
+  #   prompt: |
+  #     Address review feedback on PR #{{pull_request.number}} in {{repository.full_name}}.
+  #     Reviewer: {{review.user.login}}
+  #     Review state: {{review.state}}
+  #     Review body: {{review.body}}
+  #     PR URL: {{pull_request.html_url}}
+  #
+  #     Check out the branch, address all comments, push fixes, and reply to each comment.

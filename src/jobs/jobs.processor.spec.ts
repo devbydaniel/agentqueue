@@ -7,6 +7,10 @@ import { AgentJobData } from './job.interface.js';
 import { EventEmitter } from 'events';
 import type Redis from 'ioredis';
 
+function createMockStdin(): { end: () => void } {
+  return { end: jest.fn() };
+}
+
 // Mock child_process
 jest.mock('child_process', () => ({
   spawn: jest.fn(),
@@ -22,6 +26,8 @@ function createMockChildProcess(
   stderr = '',
 ): ChildProcess {
   const child = new EventEmitter() as ChildProcess;
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+  (child as any).stdin = createMockStdin();
   // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
   (child as any).stdout = new EventEmitter();
   // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
@@ -100,15 +106,11 @@ describe('JobsProcessor', () => {
 
     const result = await processor.process(job);
 
-    expect(mockedSpawn).toHaveBeenCalledWith('agentfiles', [
-      'exec',
-      'myrepo',
-      '--mode',
-      'json',
-      '--',
-      '-p',
-      'Fix the bug',
-    ]);
+    expect(mockedSpawn).toHaveBeenCalledWith(
+      'af',
+      ['exec', 'myrepo', '--', '--mode', 'json', '-p', 'Fix the bug'],
+      { stdio: ['pipe', 'pipe', 'pipe'] },
+    );
     expect(result).toEqual({ success: true, output: 'job output here' });
   });
 
@@ -125,17 +127,11 @@ describe('JobsProcessor', () => {
 
     await processor.process(job);
 
-    expect(mockedSpawn).toHaveBeenCalledWith('agentfiles', [
-      'exec',
-      'myrepo',
-      '--agent',
-      'claude',
-      '--mode',
-      'json',
-      '--',
-      '-p',
-      'Review PR',
-    ]);
+    expect(mockedSpawn).toHaveBeenCalledWith(
+      'af',
+      ['exec', 'myrepo', '--agent', 'claude', '--', '--mode', 'json', '-p', 'Review PR'],
+      { stdio: ['pipe', 'pipe', 'pipe'] },
+    );
   });
 
   it('should throw when process exits with non-zero code', async () => {
@@ -223,6 +219,8 @@ describe('JobsProcessor', () => {
   it('should handle spawn error event (ENOENT)', async () => {
     const child = new EventEmitter() as ChildProcess;
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    (child as any).stdin = createMockStdin();
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     (child as any).stdout = new EventEmitter();
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     (child as any).stderr = new EventEmitter();
@@ -246,6 +244,8 @@ describe('JobsProcessor', () => {
 
   it('should truncate output beyond 100KB', async () => {
     const child = new EventEmitter() as ChildProcess;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    (child as any).stdin = createMockStdin();
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     (child as any).stdout = new EventEmitter();
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access

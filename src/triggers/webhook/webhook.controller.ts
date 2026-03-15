@@ -19,6 +19,7 @@ import type { Request } from 'express';
 import { JobsService } from '../../jobs/jobs.service.js';
 import { EngineConfigService } from '../../config/engine-config.service.js';
 import { AgentJobData } from '../../jobs/job.interface.js';
+import { matchesFilters } from './webhook-filter.js';
 
 const SAFE_TARGET_PATTERN = /^[a-zA-Z0-9._-]+(\/[a-zA-Z0-9._-]+)?$/;
 const MAX_PROMPT_LENGTH = 10_000;
@@ -83,7 +84,10 @@ export class WebhookController implements OnModuleInit {
 
     const webhookTriggers = this.engineConfig.getWebhookTriggers();
     const matching = webhookTriggers.filter(
-      (t) => t.source === source && t.events.includes(eventType),
+      (t) =>
+        t.source === source &&
+        t.events.includes(eventType) &&
+        matchesFilters(body, t.filters),
     );
 
     if (matching.length === 0) {
@@ -123,6 +127,7 @@ export class WebhookController implements OnModuleInit {
         target: renderedTarget,
         prompt: renderedPrompt,
         trigger: { type: 'webhook', source: trigger.name },
+        ...(trigger.agent && { agent: trigger.agent }),
       };
 
       const id = await this.jobsService.enqueue(data);

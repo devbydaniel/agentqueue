@@ -101,8 +101,10 @@ triggers:
     type: webhook
     source: github
     events:
-      - pull_request.opened
-      - pull_request.synchronize
+      - pull_request
+    filters:
+      - field: action
+        in: ["opened", "synchronize"]
     target: "{{repository.name}}"
     prompt: "Review PR #{{pull_request.number}}: {{pull_request.title}}"
 ```
@@ -215,6 +217,41 @@ curl -X DELETE http://localhost:3000/jobs/1
 ### GitHub webhook
 
 Point your GitHub webhook to `https://your-host/webhooks/github` with the same secret as `GITHUB_WEBHOOK_SECRET`. Events matching triggers in `triggers.yaml` will be enqueued automatically.
+
+#### Webhook filters
+
+Webhook triggers support payload-level filtering via the `filters` field. All filters are AND-ed — every filter must pass for the trigger to match. Each filter resolves a dot-path into the webhook payload body and checks a condition:
+
+| Condition | Description |
+|---|---|
+| `equals` | Exact string match |
+| `contains` | Substring match (string fields only) |
+| `in` | Value is one of the listed strings |
+| `pattern` | Regex match |
+
+Example: trigger only when a specific GitHub user is requested as PR reviewer:
+
+```yaml
+- name: ai-agent-review
+  type: webhook
+  source: github
+  events:
+    - pull_request
+  filters:
+    - field: action
+      equals: review_requested
+    - field: requested_reviewer.login
+      equals: my-ai-agent-bot
+  target: "{{repository.name}}"
+  agent: reviewer
+  prompt: |
+    Review PR #{{pull_request.number}} in {{repository.full_name}}.
+    PR title: {{pull_request.title}}
+    Branch: {{pull_request.head.ref}} → {{pull_request.base.ref}}
+    URL: {{pull_request.html_url}}
+```
+
+Filters use dot-notation to access nested fields (e.g. `requested_reviewer.login`, `pull_request.head.ref`). Triggers without `filters` match all payloads for the configured `events` (backward compatible).
 
 ### Bull Board dashboard
 

@@ -150,6 +150,122 @@ describe('WebhookController', () => {
     });
   });
 
+  describe('payload filters', () => {
+    it('should match when all filters pass', async () => {
+      const triggers: WebhookTrigger[] = [
+        {
+          name: 'pr-review',
+          type: 'webhook',
+          source: 'github',
+          events: ['pull_request'],
+          filters: [
+            { field: 'action', equals: 'review_requested' },
+            { field: 'requested_reviewer.login', equals: 'my-bot' },
+          ],
+          target: '{{repository.name}}',
+          prompt: 'Review PR #{{pull_request.number}}',
+        },
+      ];
+      engineConfig.getWebhookTriggers.mockReturnValue(triggers);
+      controller.onModuleInit();
+
+      const body = {
+        action: 'review_requested',
+        requested_reviewer: { login: 'my-bot' },
+        repository: { name: 'my-repo' },
+        pull_request: { number: 7 },
+      };
+
+      const result = await controller.handleWebhook(
+        'github',
+        { 'x-github-event': 'pull_request' },
+        body,
+        makeReq() as never,
+      );
+
+      expect(result).toEqual({ jobIds: ['job-001'] });
+      expect(jobsService.enqueue).toHaveBeenCalledWith({
+        target: 'my-repo',
+        prompt: 'Review PR #7',
+        trigger: { type: 'webhook', source: 'pr-review' },
+      });
+    });
+
+    it('should not match when a filter fails', async () => {
+      const triggers: WebhookTrigger[] = [
+        {
+          name: 'pr-review',
+          type: 'webhook',
+          source: 'github',
+          events: ['pull_request'],
+          filters: [
+            { field: 'action', equals: 'review_requested' },
+            { field: 'requested_reviewer.login', equals: 'my-bot' },
+          ],
+          target: 'some-repo',
+          prompt: 'Review PR',
+        },
+      ];
+      engineConfig.getWebhookTriggers.mockReturnValue(triggers);
+      controller.onModuleInit();
+
+      const body = {
+        action: 'opened', // wrong action
+        requested_reviewer: { login: 'my-bot' },
+        repository: { name: 'my-repo' },
+      };
+
+      const result = await controller.handleWebhook(
+        'github',
+        { 'x-github-event': 'pull_request' },
+        body,
+        makeReq() as never,
+      );
+
+      expect(result).toEqual({ jobIds: [] });
+      expect(jobsService.enqueue).not.toHaveBeenCalled();
+    });
+
+    it('should match when no filters are defined (backward compat)', async () => {
+      const result = await controller.handleWebhook(
+        'github',
+        { 'x-github-event': 'push' },
+        { repository: { full_name: 'owner/repo' }, ref: 'main' },
+        makeReq() as never,
+      );
+
+      expect(result).toEqual({ jobIds: ['job-001'] });
+    });
+
+    it('should include agent in job data when trigger has agent', async () => {
+      const triggers: WebhookTrigger[] = [
+        {
+          name: 'pr-review',
+          type: 'webhook',
+          source: 'github',
+          events: ['pull_request'],
+          filters: [{ field: 'action', equals: 'opened' }],
+          target: 'my-repo',
+          agent: 'reviewer',
+          prompt: 'Review PR',
+        },
+      ];
+      engineConfig.getWebhookTriggers.mockReturnValue(triggers);
+      controller.onModuleInit();
+
+      await controller.handleWebhook(
+        'github',
+        { 'x-github-event': 'pull_request' },
+        { action: 'opened' },
+        makeReq() as never,
+      );
+
+      expect(jobsService.enqueue).toHaveBeenCalledWith(
+        expect.objectContaining({ agent: 'reviewer' }),
+      );
+    });
+  });
+
   describe('multiple matching triggers', () => {
     it('should enqueue multiple jobs if multiple triggers match', async () => {
       const triggers: WebhookTrigger[] = [

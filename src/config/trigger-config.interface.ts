@@ -3,6 +3,7 @@ export interface BaseTrigger {
   type: 'cron' | 'webhook';
   target: string;
   prompt: string;
+  agent?: string;
 }
 
 export interface CronTrigger extends BaseTrigger {
@@ -10,10 +11,19 @@ export interface CronTrigger extends BaseTrigger {
   schedule: string;
 }
 
+export interface WebhookFilter {
+  field: string;
+  equals?: string;
+  contains?: string;
+  in?: string[];
+  pattern?: string;
+}
+
 export interface WebhookTrigger extends BaseTrigger {
   type: 'webhook';
   source: string;
   events: string[];
+  filters?: WebhookFilter[];
 }
 
 export type TriggerConfig = CronTrigger | WebhookTrigger;

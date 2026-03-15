@@ -7,6 +7,7 @@ import {
   TriggersFile,
   CronTrigger,
   WebhookTrigger,
+  WebhookFilter,
 } from './trigger-config.interface.js';
 
 @Injectable()
@@ -104,6 +105,43 @@ export class EngineConfigService {
       if (!trigger['events'] || !Array.isArray(trigger['events'])) {
         this.logger.warn(`Webhook trigger "${name}" missing events array`);
         return false;
+      }
+      if (trigger['filters'] !== undefined) {
+        if (!Array.isArray(trigger['filters'])) {
+          this.logger.warn(
+            `Webhook trigger "${name}" filters must be an array`,
+          );
+          return false;
+        }
+        for (const filter of trigger['filters'] as WebhookFilter[]) {
+          if (!filter.field || typeof filter.field !== 'string') {
+            this.logger.warn(
+              `Webhook trigger "${name}" has a filter missing "field"`,
+            );
+            return false;
+          }
+          const hasCondition =
+            filter.equals !== undefined ||
+            filter.contains !== undefined ||
+            filter.in !== undefined ||
+            filter.pattern !== undefined;
+          if (!hasCondition) {
+            this.logger.warn(
+              `Webhook trigger "${name}" filter on "${filter.field}" has no condition (equals, contains, in, pattern)`,
+            );
+            return false;
+          }
+          if (filter.pattern !== undefined) {
+            try {
+              new RegExp(filter.pattern);
+            } catch {
+              this.logger.warn(
+                `Webhook trigger "${name}" filter on "${filter.field}" has invalid regex: ${filter.pattern}`,
+              );
+              return false;
+            }
+          }
+        }
       }
     }
 
