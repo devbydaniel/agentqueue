@@ -120,7 +120,7 @@ TypeScript is configured with `strict: true`, `nodenext` module resolution.
 
 - **Event normalizer** — Pure function that maps pi's JSON event types (`tool_execution_start`, `tool_execution_end`, `turn_start`, `message_update`, `agent_end`) to a normalized `AgentEvent` shape. Returns `null` for irrelevant events.
 - **Event store** — Uses Redis streams (`XADD`/`XRANGE`/`XREAD BLOCK`) keyed as `aq:events:<jobId>` with `MAXLEN ~ 500`. Provides `append`, `getAll`, `stream` (async generator), and `expire`.
-- **Events controller** — `GET /jobs/:id/events` returns JSON array. With `Accept: text/event-stream` or `?stream=true`, returns SSE stream that closes on `agent_end` or client disconnect.
+- **Events controller** — `GET /jobs/:id/events` returns JSON array. `GET /jobs/:id/events/stream` returns an SSE stream that closes on `agent_end` or client disconnect.
 
 ### CLI (`cli/`)
 

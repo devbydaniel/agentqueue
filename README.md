@@ -176,9 +176,7 @@ The processor runs agents in JSON mode (`--mode json`) and parses stdout into no
 curl http://localhost:3000/jobs/1/events
 
 # Stream events via SSE
-curl -H 'Accept: text/event-stream' http://localhost:3000/jobs/1/events
-# or
-curl http://localhost:3000/jobs/1/events?stream=true
+curl http://localhost:3000/jobs/1/events/stream
 ```
 
 ## `aq` CLI

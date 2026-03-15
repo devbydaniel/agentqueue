@@ -139,7 +139,7 @@ export class JobsProcessor extends WorkerHost {
           const logEvent = {
             type: 'log' as const,
             timestamp: Date.now(),
-            text: line,
+            text: line.length > 500 ? line.slice(0, 500) : line,
           };
           trackAppend(this.eventStore.append(jobId, logEvent));
           return;
