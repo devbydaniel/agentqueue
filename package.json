@@ -12,6 +12,8 @@
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
+    "deploy": "npm run build && kill $(lsof -ti :3000) && sleep 2 && systemctl --user start agentqueue",
+    "restart": "kill $(lsof -ti :3000) && sleep 2 && systemctl --user start agentqueue",
     "lint": "eslint \"{src,apps,libs,test,cli}/**/*.ts\" --fix",
     "test": "jest",
     "test:watch": "jest --watch",
