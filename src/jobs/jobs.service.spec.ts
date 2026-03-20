@@ -42,8 +42,8 @@ describe('JobsService', () => {
       expect(id).toBe('job-123');
       expect(mockQueue.add).toHaveBeenCalledWith('agent-job', data, {
         priority: undefined,
-        attempts: 10,
-        backoff: { type: 'exponential', delay: 5000 },
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 10000 },
       });
     });
 
@@ -61,8 +61,8 @@ describe('JobsService', () => {
 
       expect(mockQueue.add).toHaveBeenCalledWith('agent-job', data, {
         priority: 1,
-        attempts: 10,
-        backoff: { type: 'exponential', delay: 5000 },
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 10000 },
       });
     });
   });

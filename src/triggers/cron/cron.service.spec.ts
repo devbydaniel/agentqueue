@@ -108,8 +108,8 @@ describe('CronService', () => {
             trigger: { type: 'cron', source: 'daily-review' },
           },
           opts: {
-            attempts: 10,
-            backoff: { type: 'exponential', delay: 5000 },
+            attempts: 3,
+            backoff: { type: 'exponential', delay: 10000 },
           },
         },
       );
@@ -124,8 +124,8 @@ describe('CronService', () => {
             trigger: { type: 'cron', source: 'weekly-cleanup' },
           },
           opts: {
-            attempts: 10,
-            backoff: { type: 'exponential', delay: 5000 },
+            attempts: 3,
+            backoff: { type: 'exponential', delay: 10000 },
           },
         },
       );
@@ -158,8 +158,8 @@ describe('CronService', () => {
             before: '/scripts/check-calendar.sh',
           },
           opts: {
-            attempts: 10,
-            backoff: { type: 'exponential', delay: 5000 },
+            attempts: 3,
+            backoff: { type: 'exponential', delay: 10000 },
           },
         },
       );

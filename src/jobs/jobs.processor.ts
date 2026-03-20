@@ -1,4 +1,9 @@
-import { Processor, WorkerHost, InjectQueue } from '@nestjs/bullmq';
+import {
+  Processor,
+  WorkerHost,
+  InjectQueue,
+  OnWorkerEvent,
+} from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { Job, Queue, DelayedError } from 'bullmq';
 import { spawn } from 'child_process';
@@ -29,6 +34,22 @@ export class JobsProcessor extends WorkerHost {
     private readonly eventStore: EventStoreService,
   ) {
     super();
+  }
+
+  @OnWorkerEvent('failed')
+  onFailed(job: Job<AgentJobData>, error: Error): void {
+    const attemptsLeft = (job.opts.attempts ?? 1) - job.attemptsMade;
+    if (attemptsLeft > 0) {
+      this.logger.warn(
+        `Job ${job.id} failed (attempt ${job.attemptsMade}/${job.opts.attempts ?? 1}), will retry. ` +
+        `Target: "${job.data.target}". Error: ${error.message.slice(0, 200)}`,
+      );
+    } else {
+      this.logger.error(
+        `Job ${job.id} permanently failed after ${job.attemptsMade} attempts. ` +
+        `Target: "${job.data.target}". Error: ${error.message.slice(0, 200)}`,
+      );
+    }
   }
 
   private async getRedisClient(): Promise<Redis> {

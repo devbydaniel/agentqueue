@@ -31,8 +31,8 @@ export class JobsService {
   async enqueue(data: AgentJobData): Promise<string> {
     const job = await this.queue.add('agent-job', data, {
       priority: data.priority,
-      attempts: 10,
-      backoff: { type: 'exponential', delay: 5000 },
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 10000 },
     });
     return job.id!;
   }

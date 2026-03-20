@@ -45,8 +45,8 @@ export class CronService implements OnModuleInit, OnModuleDestroy {
           name: 'agent-job',
           data: jobData,
           opts: {
-            attempts: 10,
-            backoff: { type: 'exponential', delay: 5000 },
+            attempts: 3,
+            backoff: { type: 'exponential', delay: 10000 },
           },
         },
       );
