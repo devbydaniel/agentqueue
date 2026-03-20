@@ -19,6 +19,10 @@ export class CronService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   async onModuleInit(): Promise<void> {
+    // Clean up stale schedulers BEFORE registering current ones
+    // This handles renamed/removed triggers that survived non-graceful restarts
+    await this.cleanupStaleSchedulers();
+
     const cronTriggers = this.engineConfig.getCronTriggers();
 
     if (cronTriggers.length === 0) {
@@ -54,6 +58,10 @@ export class CronService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleDestroy(): Promise<void> {
+    await this.cleanupStaleSchedulers();
+  }
+
+  private async cleanupStaleSchedulers(): Promise<void> {
     const cronTriggers = this.engineConfig.getCronTriggers();
     const configuredKeys = new Set(cronTriggers.map((t) => `cron-${t.name}`));
 
@@ -64,7 +72,7 @@ export class CronService implements OnModuleInit, OnModuleDestroy {
         if (!id) continue;
         if (id.startsWith('cron-') && !configuredKeys.has(id)) {
           await this.queue.removeJobScheduler(id);
-          this.logger.log(`Removed stale cron scheduler "${scheduler.id}"`);
+          this.logger.warn(`Removed stale cron scheduler "${id}" (not in triggers config)`);
         }
       }
     } catch (error) {

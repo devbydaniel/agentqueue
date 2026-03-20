@@ -55,6 +55,7 @@ export class JobsProcessor extends WorkerHost {
     }
 
     const pendingAppends: Promise<void>[] = [];
+    let startTime: number | undefined;
     try {
       // Run before hook if configured
       if (job.data.before) {
@@ -96,8 +97,10 @@ export class JobsProcessor extends WorkerHost {
       args.push('--', '--mode', 'json', '-p', prompt);
 
       this.logger.log(`Spawning: af ${args.join(' ')}`);
+      this.logger.log(`Lock acquired for target "${target}" by job ${job.id}`);
 
       const timeout = this.configService.jobTimeout;
+      startTime = Date.now();
       const output = await this.spawnProcess(
         'af',
         args,
@@ -105,9 +108,13 @@ export class JobsProcessor extends WorkerHost {
         timeout,
         pendingAppends,
       );
+      const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+      this.logger.log(`Job ${job.id} completed successfully for target "${target}" (${duration}s)`);
       return { success: true, output };
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
+      const duration = ((Date.now() - (startTime ?? Date.now())) / 1000).toFixed(1);
+      this.logger.error(`Job ${job.id} failed for target "${target}" (${duration}s): ${message.slice(0, 200)}`);
       const MAX_ERROR_TEXT = 500;
       const truncatedMessage =
         message.length > MAX_ERROR_TEXT
@@ -126,7 +133,8 @@ export class JobsProcessor extends WorkerHost {
       throw err;
     } finally {
       // Atomically release lock only if we still own it
-      await redis.eval(RELEASE_LOCK_SCRIPT, 1, lockKey, job.id!);
+      const released = await redis.eval(RELEASE_LOCK_SCRIPT, 1, lockKey, job.id!);
+      this.logger.log(`Lock released for target "${target}" by job ${job.id} (owned=${released === 1})`);
       // Wait for all in-flight appends before setting TTL
       await Promise.allSettled(pendingAppends);
       // Set TTL on the event stream
@@ -220,12 +228,17 @@ export class JobsProcessor extends WorkerHost {
         reject(new Error(`Failed to spawn process: ${err.message}`));
       });
 
-      child.on('close', (code) => {
+      child.on('close', (code, signal) => {
         if (timer) clearTimeout(timer);
         // Process any remaining buffered stdout
         if (stdoutBuffer.trim()) {
           processLine(stdoutBuffer);
         }
+
+        // Log process exit details
+        const exitInfo = signal ? `signal=${signal}` : `code=${code ?? 'null'}`;
+        this.logger.log(`Process exited for job ${jobId}: ${exitInfo}`);
+
         if (killed) {
           reject(new Error(`Process timed out after ${timeout}ms: ${output}`));
         } else if (code === 0) {

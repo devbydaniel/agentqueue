@@ -48,6 +48,33 @@ describe('CronService', () => {
   });
 
   describe('onModuleInit', () => {
+    it('should clean up stale schedulers before registering', async () => {
+      const triggers: CronTrigger[] = [
+        {
+          name: 'daily-review',
+          type: 'cron',
+          target: 'myrepo',
+          prompt: 'Review open PRs',
+          schedule: '0 9 * * *',
+        },
+      ];
+      mockEngineConfig.getCronTriggers.mockReturnValue(triggers);
+      mockQueue.getJobSchedulers.mockResolvedValue([
+        { id: 'cron-daily-review' },
+        { id: 'cron-old-stale-trigger' },
+      ]);
+
+      await service.onModuleInit();
+
+      // Should remove the stale scheduler
+      expect(mockQueue.removeJobScheduler).toHaveBeenCalledWith(
+        'cron-old-stale-trigger',
+      );
+      expect(mockQueue.removeJobScheduler).toHaveBeenCalledTimes(1);
+      // Should still register the configured trigger
+      expect(mockQueue.upsertJobScheduler).toHaveBeenCalledTimes(1);
+    });
+
     it('should register cron triggers as BullMQ job schedulers', async () => {
       const triggers: CronTrigger[] = [
         {

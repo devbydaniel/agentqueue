@@ -7,6 +7,7 @@ import { jobsCommand } from './commands/jobs.js';
 import { watchCommand } from './commands/watch.js';
 import { logsCommand } from './commands/logs.js';
 import { runCommand } from './commands/run.js';
+import { triggersCommand } from './commands/triggers.js';
 
 const program = new Command();
 
@@ -21,6 +22,7 @@ program.addCommand(jobsCommand);
 program.addCommand(watchCommand);
 program.addCommand(logsCommand);
 program.addCommand(runCommand);
+program.addCommand(triggersCommand);
 
 program.parseAsync(process.argv).catch((err: unknown) => {
   console.error(err instanceof Error ? err.message : String(err));
