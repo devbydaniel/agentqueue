@@ -105,9 +105,7 @@ describe('evaluateFilter', () => {
         field: 'ref',
         pattern: '^refs/heads/main$',
       };
-      expect(evaluateFilter({ ref: 'refs/heads/feature' }, filter)).toBe(
-        false,
-      );
+      expect(evaluateFilter({ ref: 'refs/heads/feature' }, filter)).toBe(false);
     });
   });
 

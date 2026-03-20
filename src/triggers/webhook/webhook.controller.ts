@@ -128,6 +128,7 @@ export class WebhookController implements OnModuleInit {
         prompt: renderedPrompt,
         trigger: { type: 'webhook', source: trigger.name },
         ...(trigger.agent && { agent: trigger.agent }),
+        ...(trigger.before && { before: trigger.before }),
       };
 
       const id = await this.jobsService.enqueue(data);

@@ -31,6 +31,7 @@ export class CronService implements OnModuleInit, OnModuleDestroy {
         target: trigger.target,
         prompt: trigger.prompt,
         trigger: { type: 'cron', source: trigger.name },
+        ...(trigger.before && { before: trigger.before }),
       };
 
       await this.queue.upsertJobScheduler(

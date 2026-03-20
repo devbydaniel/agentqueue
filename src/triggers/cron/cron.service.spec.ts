@@ -104,6 +104,40 @@ describe('CronService', () => {
       );
     });
 
+    it('should include before in job data when trigger has before', async () => {
+      const triggers: CronTrigger[] = [
+        {
+          name: 'meeting-prep',
+          type: 'cron',
+          target: 'assistant',
+          prompt: 'Prepare for meeting: {{before_output}}',
+          schedule: '0 8 * * *',
+          before: '/scripts/check-calendar.sh',
+        },
+      ];
+      mockEngineConfig.getCronTriggers.mockReturnValue(triggers);
+
+      await service.onModuleInit();
+
+      expect(mockQueue.upsertJobScheduler).toHaveBeenCalledWith(
+        'cron-meeting-prep',
+        { pattern: '0 8 * * *' },
+        {
+          name: 'agent-job',
+          data: {
+            target: 'assistant',
+            prompt: 'Prepare for meeting: {{before_output}}',
+            trigger: { type: 'cron', source: 'meeting-prep' },
+            before: '/scripts/check-calendar.sh',
+          },
+          opts: {
+            attempts: 10,
+            backoff: { type: 'exponential', delay: 5000 },
+          },
+        },
+      );
+    });
+
     it('should handle empty trigger list gracefully', async () => {
       mockEngineConfig.getCronTriggers.mockReturnValue([]);
 

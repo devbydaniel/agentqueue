@@ -64,12 +64,13 @@ describe('JobsProcessor', () => {
     };
 
     mockQueue = {
-      client: Promise.resolve(mockRedis as Redis),
-    };
+      client: Promise.resolve(mockRedis),
+    } as unknown as Partial<Queue>;
 
     mockConfigService = {
       lockTtl: 900,
       jobTimeout: 600000,
+      beforeHookTimeout: 30000,
     };
 
     mockEventStore = {
@@ -129,7 +130,17 @@ describe('JobsProcessor', () => {
 
     expect(mockedSpawn).toHaveBeenCalledWith(
       'af',
-      ['exec', 'myrepo', '--agent', 'claude', '--', '--mode', 'json', '-p', 'Review PR'],
+      [
+        'exec',
+        'myrepo',
+        '--agent',
+        'claude',
+        '--',
+        '--mode',
+        'json',
+        '-p',
+        'Review PR',
+      ],
       { stdio: ['pipe', 'pipe', 'pipe'] },
     );
   });
@@ -402,6 +413,166 @@ describe('JobsProcessor', () => {
     await expect(processor.process(job)).rejects.toThrow();
 
     expect(mockEventStore.expire).toHaveBeenCalledWith('job-123', 86400);
+  });
+
+  describe('before hook', () => {
+    beforeEach(() => {
+      mockedSpawn.mockReset();
+    });
+
+    it('should proceed normally when job has no before field', async () => {
+      const child = createMockChildProcess(0, 'done');
+      mockedSpawn.mockReturnValue(child);
+
+      const job = createJob({
+        target: 'myrepo',
+        prompt: 'Do the thing',
+        trigger: { type: 'api' },
+      });
+
+      const result = await processor.process(job);
+
+      expect(result).toEqual({ success: true, output: 'done' });
+      // spawn should be called once (the agent, no before hook)
+      expect(mockedSpawn).toHaveBeenCalledTimes(1);
+      expect(mockedSpawn).toHaveBeenCalledWith(
+        'af',
+        expect.arrayContaining(['exec', 'myrepo']),
+        expect.any(Object),
+      );
+    });
+
+    it('should replace {{before_output}} in prompt when before hook exits 0 with stdout', async () => {
+      mockedSpawn.mockImplementation(() =>
+        createMockChildProcess(
+          mockedSpawn.mock.calls.length === 1 ? 0 : 0,
+          mockedSpawn.mock.calls.length === 1
+            ? 'Meeting at 10am\n'
+            : 'agent done',
+        ),
+      );
+
+      const job = createJob({
+        target: 'myrepo',
+        prompt: 'Prepare for: {{before_output}}',
+        trigger: { type: 'cron' },
+        before: '/scripts/check.sh',
+      });
+
+      const result = await processor.process(job);
+
+      expect(result.success).toBe(true);
+      expect(mockedSpawn).toHaveBeenCalledTimes(2);
+      // First call: before hook
+      expect(mockedSpawn).toHaveBeenNthCalledWith(
+        1,
+        'sh',
+        ['-c', '/scripts/check.sh'],
+        expect.any(Object),
+      );
+      // Second call: agent with substituted prompt
+      expect(mockedSpawn).toHaveBeenNthCalledWith(
+        2,
+        'af',
+        expect.arrayContaining(['-p', 'Prepare for: Meeting at 10am']),
+        expect.any(Object),
+      );
+    });
+
+    it('should skip job when before hook exits non-zero', async () => {
+      const beforeChild = createMockChildProcess(1, '', 'no meetings');
+      mockedSpawn.mockReturnValue(beforeChild);
+
+      const job = createJob({
+        target: 'myrepo',
+        prompt: 'Prepare for: {{before_output}}',
+        trigger: { type: 'cron' },
+        before: '/scripts/check.sh',
+      });
+
+      const result = await processor.process(job);
+
+      expect(result).toEqual({ success: true, output: 'skipped' });
+      // Only the before hook should be spawned, not the agent
+      expect(mockedSpawn).toHaveBeenCalledTimes(1);
+      expect(mockedSpawn).toHaveBeenCalledWith(
+        'sh',
+        ['-c', '/scripts/check.sh'],
+        expect.any(Object),
+      );
+      // Should append a skip log event
+      expect(mockEventStore.append).toHaveBeenCalledWith(
+        'job-123',
+        expect.objectContaining({
+          type: 'log',
+          text: 'Skipped by before hook',
+        }),
+      );
+    });
+
+    it('should replace {{before_output}} with empty string when before hook exits 0 with empty stdout', async () => {
+      mockedSpawn.mockImplementation(() =>
+        createMockChildProcess(
+          0,
+          mockedSpawn.mock.calls.length === 1 ? '' : 'agent done',
+        ),
+      );
+
+      const job = createJob({
+        target: 'myrepo',
+        prompt: 'Info: {{before_output}} end',
+        trigger: { type: 'cron' },
+        before: '/scripts/check.sh',
+      });
+
+      const result = await processor.process(job);
+
+      expect(result.success).toBe(true);
+      expect(mockedSpawn).toHaveBeenNthCalledWith(
+        2,
+        'af',
+        expect.arrayContaining(['-p', 'Info:  end']),
+        expect.any(Object),
+      );
+    });
+
+    it('should skip job when before hook times out', async () => {
+      // Override beforeHookTimeout to a very short value
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      (mockConfigService as any).beforeHookTimeout = 10;
+
+      const child = new EventEmitter() as ChildProcess;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      (child as any).stdin = { end: jest.fn() };
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      (child as any).stdout = new EventEmitter();
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      (child as any).stderr = new EventEmitter();
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      (child as any).kill = jest.fn(() => {
+        // Simulate SIGTERM causing close with null code
+        process.nextTick(() => child.emit('close', null));
+      });
+      mockedSpawn.mockReturnValue(child);
+
+      const job = createJob({
+        target: 'myrepo',
+        prompt: 'Prepare: {{before_output}}',
+        trigger: { type: 'cron' },
+        before: 'sleep 60',
+      });
+
+      const result = await processor.process(job);
+
+      expect(result).toEqual({ success: true, output: 'skipped' });
+      expect(mockEventStore.append).toHaveBeenCalledWith(
+        'job-123',
+        expect.objectContaining({
+          type: 'log',
+          text: 'Skipped by before hook',
+        }),
+      );
+    });
   });
 
   it('should still return raw output string for backward compat with JSON stdout', async () => {

@@ -237,6 +237,34 @@ describe('WebhookController', () => {
       expect(result).toEqual({ jobIds: ['job-001'] });
     });
 
+    it('should include before in job data when trigger has before', async () => {
+      const triggers: WebhookTrigger[] = [
+        {
+          name: 'pr-review',
+          type: 'webhook',
+          source: 'github',
+          events: ['pull_request'],
+          filters: [{ field: 'action', equals: 'opened' }],
+          target: 'my-repo',
+          prompt: 'Review PR',
+          before: '/scripts/check-pr.sh',
+        },
+      ];
+      engineConfig.getWebhookTriggers.mockReturnValue(triggers);
+      controller.onModuleInit();
+
+      await controller.handleWebhook(
+        'github',
+        { 'x-github-event': 'pull_request' },
+        { action: 'opened' },
+        makeReq() as never,
+      );
+
+      expect(jobsService.enqueue).toHaveBeenCalledWith(
+        expect.objectContaining({ before: '/scripts/check-pr.sh' }),
+      );
+    });
+
     it('should include agent in job data when trigger has agent', async () => {
       const triggers: WebhookTrigger[] = [
         {

@@ -7,4 +7,5 @@ export interface AgentJobData {
   };
   agent?: string;
   priority?: number;
+  before?: string;
 }

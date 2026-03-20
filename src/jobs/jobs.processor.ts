@@ -38,7 +38,8 @@ export class JobsProcessor extends WorkerHost {
   async process(
     job: Job<AgentJobData>,
   ): Promise<{ success: boolean; output: string }> {
-    const { target, prompt, agent } = job.data;
+    const { target, agent } = job.data;
+    let { prompt } = job.data;
     const lockKey = `agent-lock:${target}`;
     const lockTtl = this.configService.lockTtl;
 
@@ -55,6 +56,39 @@ export class JobsProcessor extends WorkerHost {
 
     const pendingAppends: Promise<void>[] = [];
     try {
+      // Run before hook if configured
+      if (job.data.before) {
+        const beforeResult = await this.runBeforeHook(
+          job.data.before,
+          job.id!,
+          pendingAppends,
+        );
+        if (!beforeResult.proceed) {
+          this.logger.log(
+            `Before hook skipped job ${job.id} for target "${target}"`,
+          );
+          const skipEvent = {
+            type: 'log' as const,
+            timestamp: Date.now(),
+            text: 'Skipped by before hook',
+          };
+          pendingAppends.push(
+            this.eventStore.append(job.id!, skipEvent).catch((e: unknown) => {
+              this.logger.warn(`Failed to append skip event: ${String(e)}`);
+            }),
+          );
+          return { success: true, output: 'skipped' };
+        }
+        if (beforeResult.output) {
+          prompt = prompt.replace(
+            /\{\{before_output\}\}/g,
+            beforeResult.output,
+          );
+        } else {
+          prompt = prompt.replace(/\{\{before_output\}\}/g, '');
+        }
+      }
+
       const args = ['exec', target];
       if (agent) {
         args.push('--agent', agent);
@@ -198,6 +232,74 @@ export class JobsProcessor extends WorkerHost {
           resolve(output);
         } else {
           reject(new Error(`Process exited with code ${code}: ${output}`));
+        }
+      });
+    });
+  }
+
+  private runBeforeHook(
+    before: string,
+    jobId: string,
+    pendingAppends: Promise<void>[],
+  ): Promise<{ proceed: boolean; output?: string }> {
+    const timeout = this.configService.beforeHookTimeout;
+    return new Promise((resolve) => {
+      const child = spawn('sh', ['-c', before], {
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+      child.stdin.end();
+
+      let stdout = '';
+      let stderr = '';
+      let killed = false;
+
+      child.stdout.on('data', (chunk: Buffer) => {
+        stdout += chunk.toString();
+      });
+      child.stderr.on('data', (chunk: Buffer) => {
+        stderr += chunk.toString();
+      });
+
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      if (timeout > 0) {
+        timer = setTimeout(() => {
+          killed = true;
+          child.kill('SIGTERM');
+        }, timeout);
+      }
+
+      child.on('error', (err) => {
+        if (timer) clearTimeout(timer);
+        this.logger.warn(
+          `Before hook failed to spawn for job ${jobId}: ${err.message}`,
+        );
+        resolve({ proceed: false });
+      });
+
+      child.on('close', (code) => {
+        if (timer) clearTimeout(timer);
+        if (killed) {
+          this.logger.warn(
+            `Before hook timed out after ${timeout}ms for job ${jobId}`,
+          );
+          const timeoutEvent = {
+            type: 'log' as const,
+            timestamp: Date.now(),
+            text: `Before hook timed out after ${timeout}ms`,
+          };
+          pendingAppends.push(
+            this.eventStore.append(jobId, timeoutEvent).catch((e: unknown) => {
+              this.logger.warn(`Failed to append timeout event: ${String(e)}`);
+            }),
+          );
+          resolve({ proceed: false });
+        } else if (code === 0) {
+          resolve({ proceed: true, output: stdout.trim() });
+        } else {
+          this.logger.log(
+            `Before hook exited with code ${code} for job ${jobId}${stderr ? ': ' + stderr.trim() : ''}`,
+          );
+          resolve({ proceed: false });
         }
       });
     });

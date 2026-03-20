@@ -4,6 +4,7 @@ export interface BaseTrigger {
   target: string;
   prompt: string;
   agent?: string;
+  before?: string;
 }
 
 export interface CronTrigger extends BaseTrigger {

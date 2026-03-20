@@ -77,6 +77,7 @@ Edit `.env`:
 | `WORKER_CONCURRENCY` | `3` | Max concurrent agent jobs |
 | `JOB_TIMEOUT` | `600000` | Job timeout in ms (10 min) |
 | `LOCK_TTL` | `900` | Per-target Redis lock TTL in seconds |
+| `BEFORE_HOOK_TIMEOUT` | `30000` | Before hook timeout in ms (30 sec) |
 | `GITHUB_WEBHOOK_SECRET` | — | HMAC secret for GitHub webhook verification |
 | `TRIGGERS_CONFIG_PATH` | `./config/triggers.yaml` | Path to trigger definitions |
 | `AQ_URL` | `http://localhost:3000` | AgentQueue server URL (used by `aq` CLI) |
@@ -95,6 +96,14 @@ triggers:
     schedule: "0 8 * * 1-5"
     target: assistant
     prompt: "Run the morning kickoff routine"
+
+  # Cron with before hook: gate + enrich
+  - name: meeting-prep
+    type: cron
+    schedule: "*/30 8-17 * * 1-5"
+    target: assistant
+    before: "/home/you/.config/agentqueue/scripts/check-calendar.sh"
+    prompt: "Prepare for the upcoming meeting: {{before_output}}"
 
   # Webhook: triggered by GitHub events
   - name: pr-review
@@ -252,6 +261,38 @@ Example: trigger only when a specific GitHub user is requested as PR reviewer:
 ```
 
 Filters use dot-notation to access nested fields (e.g. `requested_reviewer.login`, `pull_request.head.ref`). Triggers without `filters` match all payloads for the configured `events` (backward compatible).
+
+### Before hook
+
+Triggers support an optional `before` field that specifies a script to run before spawning the agent. This enables **gate** and **enrichment** patterns — e.g., "only run meeting prep if there's a meeting in the next 30 minutes."
+
+**Script contract:**
+
+| Exit code | Behavior |
+|---|---|
+| `0` | Proceed — the agent is spawned. If the script produces stdout, it replaces all `{{before_output}}` placeholders in the prompt. |
+| Non-zero | Skip — the job returns `{ success: true, output: 'skipped' }` and the agent is **not** spawned. |
+| Timeout | Skip — same as non-zero. Default timeout is 30 seconds (`BEFORE_HOOK_TIMEOUT`). |
+
+The script is executed via `sh -c <before>`, so it can be a path to a script or an inline shell command.
+
+**Example trigger:**
+
+```yaml
+- name: meeting-prep
+  type: cron
+  schedule: "*/30 8-17 * * 1-5"
+  target: assistant
+  before: "/home/you/scripts/check-calendar.sh"
+  prompt: "Prepare for the upcoming meeting: {{before_output}}"
+```
+
+If `check-calendar.sh` exits 0 and prints `"Standup at 10:00 — discuss deployment"`, the agent receives the prompt:
+```
+Prepare for the upcoming meeting: Standup at 10:00 — discuss deployment
+```
+
+If the script exits non-zero (no meetings), the job is silently skipped.
 
 ### Bull Board dashboard
 

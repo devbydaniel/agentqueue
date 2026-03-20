@@ -15,7 +15,7 @@ src/
 ├── config/
 │   ├── config.module.ts             # ConfigModule + EngineConfigService provider
 │   ├── engine-config.service.ts     # Loads env vars + triggers.yaml
-│   └── trigger-config.interface.ts  # TypeScript interfaces for trigger configs
+│   └── trigger-config.interface.ts  # TypeScript interfaces for trigger configs (BaseTrigger includes optional `before` field)
 ├── redis/
 │   └── redis.module.ts              # Global module: provides REDIS_CLIENT (ioredis)
 ├── events/
@@ -67,10 +67,14 @@ cli/
 The processor follows this flow:
 1. Acquire a Redis lock for the target (`agent-lock:<target>`) using `SET NX EX`
 2. If lock fails, throw `DelayedError` — BullMQ retries with exponential backoff (10 attempts)
-3. Spawn `agentfiles exec <target> [--agent <agent>] --mode json -- -p <prompt>`
-4. Parse stdout line by line: JSON lines → `normalizeEvent()` → `EventStoreService.append()`, non-JSON lines → `{ type: 'log' }` events
-5. Release the lock atomically via Lua script (only if we still own it)
-6. Set 24-hour TTL on the event stream via `EventStoreService.expire()`
+3. If `job.data.before` is set, run the before hook (`sh -c <before>`):
+   - Exit 0 → replace `{{before_output}}` in prompt with trimmed stdout, proceed
+   - Non-zero or timeout → skip the job (return `{ success: true, output: 'skipped' }`), do NOT spawn agent
+   - Timeout controlled by `BEFORE_HOOK_TIMEOUT` env var (default 30000ms)
+4. Spawn `agentfiles exec <target> [--agent <agent>] --mode json -- -p <prompt>`
+5. Parse stdout line by line: JSON lines → `normalizeEvent()` → `EventStoreService.append()`, non-JSON lines → `{ type: 'log' }` events
+6. Release the lock atomically via Lua script (only if we still own it)
+7. Set 24-hour TTL on the event stream via `EventStoreService.expire()`
 
 The Lua script for lock release:
 ```lua

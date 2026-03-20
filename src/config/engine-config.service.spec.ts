@@ -167,6 +167,7 @@ describe('EngineConfigService', () => {
     expect(service.workerConcurrency).toBe(3);
     expect(service.jobTimeout).toBe(600000);
     expect(service.lockTtl).toBe(900);
+    expect(service.beforeHookTimeout).toBe(30000);
   });
 
   it('should expose overridden config values', async () => {
@@ -175,11 +176,13 @@ describe('EngineConfigService', () => {
       WORKER_CONCURRENCY: 5,
       JOB_TIMEOUT: 300000,
       LOCK_TTL: 600,
+      BEFORE_HOOK_TIMEOUT: 15000,
     });
 
     expect(service.workerConcurrency).toBe(5);
     expect(service.jobTimeout).toBe(300000);
     expect(service.lockTtl).toBe(600);
+    expect(service.beforeHookTimeout).toBe(15000);
   });
 
   it('should coerce string env values to numbers', async () => {
@@ -188,11 +191,13 @@ describe('EngineConfigService', () => {
       WORKER_CONCURRENCY: '10',
       JOB_TIMEOUT: '500000',
       LOCK_TTL: '1200',
+      BEFORE_HOOK_TIMEOUT: '60000',
     });
 
     expect(service.workerConcurrency).toBe(10);
     expect(service.jobTimeout).toBe(500000);
     expect(service.lockTtl).toBe(1200);
+    expect(service.beforeHookTimeout).toBe(60000);
   });
 
   it('should handle empty triggers list', async () => {
@@ -209,6 +214,55 @@ describe('EngineConfigService', () => {
 
     const service = await createService({ TRIGGERS_CONFIG_PATH: configPath });
     expect(service.getTriggers()).toEqual([]);
+  });
+
+  it('should load trigger with before field', async () => {
+    const configPath = join(tmpDir, 'triggers.yaml');
+    const beforeScript = join(tmpDir, 'check.sh');
+    writeFileSync(beforeScript, '#!/bin/sh\necho hello');
+    const config = {
+      triggers: [
+        {
+          name: 'with-before',
+          type: 'cron',
+          schedule: '0 8 * * *',
+          target: 'assistant',
+          prompt: 'Run task',
+          before: beforeScript,
+        },
+      ],
+    };
+    writeFileSync(configPath, yaml.dump(config));
+
+    const service = await createService({ TRIGGERS_CONFIG_PATH: configPath });
+    const triggers = service.getTriggers();
+
+    expect(triggers).toHaveLength(1);
+    expect(triggers[0].before).toBe(beforeScript);
+  });
+
+  it('should load trigger with non-existent before path (with warning)', async () => {
+    const configPath = join(tmpDir, 'triggers.yaml');
+    const config = {
+      triggers: [
+        {
+          name: 'bad-before',
+          type: 'cron',
+          schedule: '0 8 * * *',
+          target: 'assistant',
+          prompt: 'Run task',
+          before: '/nonexistent/check.sh',
+        },
+      ],
+    };
+    writeFileSync(configPath, yaml.dump(config));
+
+    const service = await createService({ TRIGGERS_CONFIG_PATH: configPath });
+    const triggers = service.getTriggers();
+
+    // Should still load the trigger (warning only, not rejection)
+    expect(triggers).toHaveLength(1);
+    expect(triggers[0].before).toBe('/nonexistent/check.sh');
   });
 
   it('should handle YAML with null triggers', async () => {

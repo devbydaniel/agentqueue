@@ -31,6 +31,10 @@ export class EngineConfigService {
     return Number(this.configService.get<number>('LOCK_TTL', 900));
   }
 
+  get beforeHookTimeout(): number {
+    return Number(this.configService.get<number>('BEFORE_HOOK_TIMEOUT', 30000));
+  }
+
   getTriggers(): TriggerConfig[] {
     return this.triggers;
   }
@@ -148,6 +152,13 @@ export class EngineConfigService {
     if (type !== 'cron' && type !== 'webhook') {
       this.logger.warn(`Unknown trigger type "${type}" for "${name}"`);
       return false;
+    }
+
+    const before = trigger['before'] as string | undefined;
+    if (before && !existsSync(before)) {
+      this.logger.warn(
+        `Trigger "${name}" has before hook path that does not exist: ${before}`,
+      );
     }
 
     return true;
